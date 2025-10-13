@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip } from 'react-leaflet';
@@ -48,6 +47,11 @@ const ChatbotIcon = () => (
 );
 const CloseIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+);
+const FeedbackIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+    </svg>
 );
 
 // --- MOCK DATA & HELPERS ---
@@ -119,6 +123,7 @@ const Sidebar: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 <NavLink to="/news" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><NewsIcon />News</NavLink>
                 <NavLink to="/profile" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><UserIcon />Profile</NavLink>
                 <NavLink to="/about" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><InfoIcon />About</NavLink>
+                <NavLink to="/feedback" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><FeedbackIcon />Feedback</NavLink>
             </nav>
             <div className="p-4 border-t border-gray-700">
                 <div className="flex justify-center space-x-4 mb-4">
@@ -595,12 +600,21 @@ const PageContainer: React.FC<{title: string; children: React.ReactNode}> = ({ t
 const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
     const [filterType, setFilterType] = useState<ReportType | 'ALL'>('ALL');
     const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name'>('newest');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const filteredAndSortedReports = useMemo(() => {
         let result = [...reports];
         
         if (filterType !== 'ALL') {
             result = result.filter(r => r.type === filterType);
+        }
+
+        if (searchTerm.trim() !== '') {
+            const lowercasedTerm = searchTerm.toLowerCase();
+            result = result.filter(r => 
+                r.locationName.toLowerCase().includes(lowercasedTerm) ||
+                r.description.toLowerCase().includes(lowercasedTerm)
+            );
         }
 
         switch (sortBy) {
@@ -616,29 +630,90 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                 break;
         }
         return result;
-    }, [reports, filterType, sortBy]);
+    }, [reports, filterType, sortBy, searchTerm]);
+
+    const handleDownloadCSV = () => {
+        if (filteredAndSortedReports.length === 0) {
+            alert("No data available to download for the current filters.");
+            return;
+        }
+        const headers = ["ID", "Type", "Latitude", "Longitude", "Location Name", "Description", "Reported By", "Timestamp"];
+        
+        const escapeCsvCell = (cell: any): string => {
+            const strCell = String(cell);
+            if (strCell.includes(',')) {
+                return `"${strCell.replace(/"/g, '""')}"`;
+            }
+            return strCell;
+        };
+
+        const csvContent = [
+            headers.join(','),
+            ...filteredAndSortedReports.map(report => [
+                escapeCsvCell(report.id),
+                escapeCsvCell(report.type),
+                escapeCsvCell(report.latitude),
+                escapeCsvCell(report.longitude),
+                escapeCsvCell(report.locationName),
+                escapeCsvCell(report.description),
+                escapeCsvCell(report.reportedBy),
+                escapeCsvCell(report.timestamp)
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "greenmap_reports.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
 
     const selectClasses = "bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
+    const inputClasses = "bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all";
 
     return (
         <PageContainer title="All Reports">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6 p-4 bg-gray-700/30 rounded-lg space-y-4 sm:space-y-0">
-                <div className="flex items-center space-x-2">
-                    <label htmlFor="filter-type" className="text-gray-400">Filter by:</label>
-                    <select id="filter-type" value={filterType} onChange={e => setFilterType(e.target.value as ReportType | 'ALL')} className={selectClasses}>
-                        <option value="ALL">All Types</option>
-                        <option value={ReportType.TreePlantation}>🌱 Tree Plantation</option>
-                        <option value={ReportType.PollutionHotspot}>⚠️ Pollution Hotspot</option>
-                    </select>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 p-4 bg-gray-700/30 rounded-lg gap-4">
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                    <input 
+                        type="text" 
+                        placeholder="Search location/description..." 
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className={`${inputClasses} w-full sm:w-auto`}
+                    />
+                    <div className="flex items-center space-x-2">
+                        <label htmlFor="filter-type" className="text-gray-400">Filter:</label>
+                        <select id="filter-type" value={filterType} onChange={e => setFilterType(e.target.value as ReportType | 'ALL')} className={selectClasses}>
+                            <option value="ALL">All Types</option>
+                            <option value={ReportType.TreePlantation}>🌱 Tree Plantation</option>
+                            <option value={ReportType.PollutionHotspot}>⚠️ Pollution Hotspot</option>
+                        </select>
+                    </div>
+                     <div className="flex items-center space-x-2">
+                        <label htmlFor="sort-by" className="text-gray-400">Sort:</label>
+                        <select id="sort-by" value={sortBy} onChange={e => setSortBy(e.target.value as 'newest' | 'oldest' | 'name')} className={selectClasses}>
+                            <option value="newest">Newest</option>
+                            <option value="oldest">Oldest</option>
+                            <option value="name">Name (A-Z)</option>
+                        </select>
+                    </div>
                 </div>
-                 <div className="flex items-center space-x-2">
-                    <label htmlFor="sort-by" className="text-gray-400">Sort by:</label>
-                    <select id="sort-by" value={sortBy} onChange={e => setSortBy(e.target.value as 'newest' | 'oldest' | 'name')} className={selectClasses}>
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                        <option value="name">Location Name (A-Z)</option>
-                    </select>
-                </div>
+                <button
+                    onClick={handleDownloadCSV}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center w-full md:w-auto justify-center"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    Download CSV
+                </button>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -651,14 +726,22 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredAndSortedReports.map(report => (
-                            <tr key={report.id} className="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
-                                <td className="p-3">{report.type === ReportType.TreePlantation ? '🌱 Plantation' : '⚠️ Pollution'}</td>
-                                <td className="p-3">{report.locationName}</td>
-                                <td className="p-3">{report.description}</td>
-                                <td className="p-3">{new Date(report.timestamp).toLocaleDateString()}</td>
+                        {filteredAndSortedReports.length > 0 ? (
+                            filteredAndSortedReports.map(report => (
+                                <tr key={report.id} className="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
+                                    <td className="p-3 whitespace-nowrap">{report.type === ReportType.TreePlantation ? '🌱 Plantation' : '⚠️ Pollution'}</td>
+                                    <td className="p-3">{report.locationName}</td>
+                                    <td className="p-3">{report.description}</td>
+                                    <td className="p-3 whitespace-nowrap">{new Date(report.timestamp).toLocaleDateString()}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={4} className="text-center p-8 text-gray-500">
+                                    No reports match your search criteria.
+                                </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -905,13 +988,31 @@ const NewsPage: React.FC = () => (
     </PageContainer>
 );
 
-const ProfilePage = () => {
+const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState("Alex Green");
     const [email, setEmail] = useState("alex.green@example.com");
 
     const [tempName, setTempName] = useState(name);
     const [tempEmail, setTempEmail] = useState(email);
+
+    const userReports = useMemo(() =>
+        reports.filter(report => report.reportedBy === name),
+    [reports, name]);
+
+    const treeReportsCount = useMemo(() =>
+        userReports.filter(report => report.type === ReportType.TreePlantation).length,
+    [userReports]);
+
+    const pollutionReportsCount = useMemo(() =>
+        userReports.filter(report => report.type === ReportType.PollutionHotspot).length,
+    [userReports]);
+    
+    const recentActivities = useMemo(() =>
+        userReports
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .slice(0, 3),
+    [userReports]);
 
     const handleEdit = () => {
         setTempName(name);
@@ -929,6 +1030,18 @@ const ProfilePage = () => {
         setEmail(tempEmail);
         setIsEditing(false);
     };
+
+    const StatCard = ({ value, label, icon, delay }) => (
+        <motion.div 
+            className="bg-gray-700/50 p-4 rounded-lg text-center"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: delay * 0.1 + 0.3 }}
+        >
+            <p className="text-3xl font-bold">{icon} {value}</p>
+            <p className="text-gray-400 text-sm">{label}</p>
+        </motion.div>
+    );
 
     return (
         <PageContainer title="My Profile">
@@ -993,6 +1106,43 @@ const ProfilePage = () => {
                     </AnimatePresence>
                 </div>
             </div>
+            
+            <div className="mt-12 border-t border-gray-700 pt-8">
+                 <h3 className="text-2xl font-bold text-emerald-400 mb-4">My Contributions</h3>
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <StatCard value={treeReportsCount} label="Trees Planted" icon="🌳" delay={0} />
+                    <StatCard value={pollutionReportsCount} label="Pollution Hotspots" icon="⚠️" delay={1} />
+                    <StatCard value={userReports.length} label="Total Contributions" icon="⭐" delay={2} />
+                 </div>
+            </div>
+
+            <div className="mt-8">
+                <h3 className="text-2xl font-bold text-emerald-400 mb-4">Recent Activity</h3>
+                <div className="space-y-4">
+                    {recentActivities.length > 0 ? (
+                        recentActivities.map((report, index) => (
+                             <motion.div
+                                key={report.id}
+                                className="bg-gray-700/50 p-4 rounded-lg flex items-center justify-between"
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: index * 0.1 + 0.5 }}
+                            >
+                                <div>
+                                    <p className="font-bold">
+                                        {report.type === ReportType.TreePlantation ? '🌱' : '⚠️'} {report.locationName}
+                                    </p>
+                                    <p className="text-sm text-gray-400">{report.description}</p>
+                                </div>
+                                <p className="text-sm text-gray-500 whitespace-nowrap">{new Date(report.timestamp).toLocaleDateString()}</p>
+                            </motion.div>
+                        ))
+                    ) : (
+                        <p className="text-gray-500">No reports submitted yet. Go make your first contribution!</p>
+                    )}
+                </div>
+            </div>
+
         </PageContainer>
     );
 };
@@ -1036,6 +1186,91 @@ const AboutPage = () => {
                         </motion.div>
                     ))}
                 </div>
+            </div>
+        </PageContainer>
+    );
+};
+
+const FeedbackPage: React.FC = () => {
+    const [feedbackType, setFeedbackType] = useState('general');
+    const [message, setMessage] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitSuccess, setSubmitSuccess] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!message.trim()) {
+            alert("Please enter your feedback message.");
+            return;
+        }
+        setIsSubmitting(true);
+        setTimeout(() => {
+            setIsSubmitting(false);
+            setSubmitSuccess(true);
+            setMessage('');
+            setFeedbackType('general');
+            setTimeout(() => setSubmitSuccess(false), 5000); // Hide success message after 5 seconds
+        }, 1500);
+    };
+
+    const inputClasses = "w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
+    
+    return (
+        <PageContainer title="Submit Feedback">
+            <div className="max-w-xl mx-auto">
+                 <p className="mb-8 text-gray-300 text-center">
+                    We value your input! Whether you've found a bug, have an idea for a new feature, or just want to share your thoughts, we'd love to hear from you.
+                </p>
+                <AnimatePresence>
+                    {submitSuccess && (
+                         <motion.div
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            className="bg-green-800/50 border border-green-500 text-green-200 px-4 py-3 rounded-lg relative mb-6 text-center"
+                            role="alert"
+                        >
+                            <strong className="font-bold">Thank you! </strong>
+                            <span className="block sm:inline">Your feedback has been submitted successfully.</span>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                        <label className="block text-gray-400 text-sm font-bold mb-2">Feedback Type</label>
+                        <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)} className={inputClasses}>
+                            <option value="general">General Comment</option>
+                            <option value="bug">Bug Report</option>
+                            <option value="feature">Feature Request</option>
+                        </select>
+                    </div>
+                     <div className="mb-6">
+                        <label className="block text-gray-400 text-sm font-bold mb-2">Message</label>
+                        <textarea 
+                            value={message} 
+                            onChange={e => setMessage(e.target.value)} 
+                            required 
+                            rows={6} 
+                            placeholder="Tell us what you think..."
+                            className={inputClasses}
+                        ></textarea>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-md transition duration-300 flex items-center justify-center"
+                    >
+                         {isSubmitting ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Submitting...
+                            </>
+                        ) : 'Submit Feedback'}
+                    </button>
+                </form>
             </div>
         </PageContainer>
     );
@@ -1113,8 +1348,9 @@ const App: React.FC = () => {
                             <Route path="/reports" element={<ReportsPage reports={reports} />} />
                             <Route path="/analysis" element={<AnalysisPage reports={reports} />} />
                             <Route path="/news" element={<NewsPage />} />
-                            <Route path="/profile" element={<ProfilePage />} />
+                            <Route path="/profile" element={<ProfilePage reports={reports}/>} />
                             <Route path="/about" element={<AboutPage />} />
+                            <Route path="/feedback" element={<FeedbackPage />} />
                             <Route path="*" element={<Navigate to="/dashboard" />} />
                         </Routes>
                     </AnimatePresence>
