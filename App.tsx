@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip } from 'r
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Report, ReportType } from './types';
+import { GoogleGenAI } from "@google/genai";
 
 // --- ICONS (as React Components) ---
 
@@ -141,9 +142,10 @@ interface ReportFormProps {
     onClose: () => void;
     onSubmit?: (report: Omit<Report, 'id' | 'reportedBy' | 'timestamp'>) => void;
     onUpdate?: (report: Report) => void;
+    initialLocationName?: string;
 }
 
-const ReportForm: React.FC<ReportFormProps> = ({ position, reportToEdit, onClose, onSubmit, onUpdate }) => {
+const ReportForm: React.FC<ReportFormProps> = ({ position, reportToEdit, onClose, onSubmit, onUpdate, initialLocationName }) => {
     const isEditMode = !!reportToEdit;
     const [locationName, setLocationName] = useState('');
     const [description, setDescription] = useState('');
@@ -154,8 +156,14 @@ const ReportForm: React.FC<ReportFormProps> = ({ position, reportToEdit, onClose
             setLocationName(reportToEdit.locationName);
             setDescription(reportToEdit.description);
             setType(reportToEdit.type);
+        } else {
+            // For new reports
+            setLocationName(initialLocationName || '');
+            // Reset other fields when a new location is clicked
+            setDescription('');
+            setType(ReportType.TreePlantation);
         }
-    }, [reportToEdit, isEditMode]);
+    }, [reportToEdit, isEditMode, initialLocationName]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -210,6 +218,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ position, reportToEdit, onClose
                         <label className="block text-gray-400 text-sm font-bold mb-2">Coordinates</label>
                          <p className="text-sm font-mono bg-gray-900 p-2 rounded">{currentLat.toFixed(5)}, {currentLng.toFixed(5)}</p>
                          {isEditMode && <p className="text-xs text-gray-500 mt-1">Drag the marker on the map to change location.</p>}
+                         {!isEditMode && <p className="text-xs text-gray-500 mt-1">Location name is auto-fetched. You can edit it if needed.</p>}
                     </div>
                     <div className="flex items-center justify-between">
                         <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">{isEditMode ? 'Update Report' : 'Submit Report'}</button>
@@ -480,22 +489,41 @@ const DashboardPage: React.FC<{
     addReport: (reportData: Omit<Report, 'id' | 'reportedBy' | 'timestamp'>) => void,
     updateReport: (reportData: Report) => void,
 }> = ({ reports, addReport, updateReport }) => {
-    const [formPosition, setFormPosition] = useState<{ lat: number; lng: number } | null>(null);
+    const [formInitialData, setFormInitialData] = useState<{ position: { lat: number; lng: number }; locationName: string } | null>(null);
+    const [isFetchingLocation, setIsFetchingLocation] = useState(false);
     const [editingReport, setEditingReport] = useState<Report | null>(null);
     const [viewingReport, setViewingReport] = useState<Report | null>(null);
 
     const treeCount = useMemo(() => reports.filter(r => r.type === ReportType.TreePlantation).length, [reports]);
     const pollutionCount = useMemo(() => reports.filter(r => r.type === ReportType.PollutionHotspot).length, [reports]);
 
-    const handleMapClick = useCallback((latlng: L.LatLng) => {
+    const handleMapClick = useCallback(async (latlng: L.LatLng) => {
         if (!editingReport) { // Prevent opening a new form while editing
-            setFormPosition({ lat: latlng.lat, lng: latlng.lng });
+            setIsFetchingLocation(true);
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`);
+                if (!response.ok) throw new Error("Failed to fetch location");
+                const data = await response.json();
+                const locationName = data.display_name || `Lat: ${latlng.lat.toFixed(4)}, Lng: ${latlng.lng.toFixed(4)}`;
+                setFormInitialData({
+                    position: { lat: latlng.lat, lng: latlng.lng },
+                    locationName: locationName,
+                });
+            } catch (error) {
+                console.error("Error fetching location name:", error);
+                setFormInitialData({
+                    position: { lat: latlng.lat, lng: latlng.lng },
+                    locationName: '', // Let user fill manually
+                });
+            } finally {
+                setIsFetchingLocation(false);
+            }
         }
     }, [editingReport]);
 
     const handleFormSubmit = (reportData: Omit<Report, 'id'| 'reportedBy' | 'timestamp'>) => {
         addReport(reportData);
-        setFormPosition(null);
+        setFormInitialData(null);
     };
     
     const handleUpdateSubmit = (reportData: Report) => {
@@ -523,7 +551,11 @@ const DashboardPage: React.FC<{
                 </motion.div>
                  <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }} className="bg-gray-800 bg-opacity-70 backdrop-blur-md p-4 rounded-lg shadow-lg text-white w-64">
                     <h3 className="font-bold text-lg text-emerald-400">How to help?</h3>
-                    <p className="text-sm">Click anywhere on the map to add a new report. Click a marker for more options.</p>
+                    {isFetchingLocation ? (
+                        <p className="text-sm text-emerald-300 animate-pulse">Fetching location...</p>
+                    ) : (
+                        <p className="text-sm">Click anywhere on the map to add a new report. Click a marker for more options.</p>
+                    )}
                 </motion.div>
             </div>
             <MapComponent 
@@ -535,7 +567,7 @@ const DashboardPage: React.FC<{
                 onMarkerDragEnd={handleMarkerDragEnd}
             />
             <AnimatePresence>
-                {formPosition && <ReportForm position={formPosition} onClose={() => setFormPosition(null)} onSubmit={handleFormSubmit} />}
+                {formInitialData && <ReportForm position={formInitialData.position} initialLocationName={formInitialData.locationName} onClose={() => setFormInitialData(null)} onSubmit={handleFormSubmit} />}
                 {editingReport && <ReportForm reportToEdit={editingReport} onClose={() => setEditingReport(null)} onUpdate={handleUpdateSubmit} />}
             </AnimatePresence>
             <ReportDetailPanel report={viewingReport} onClose={() => setViewingReport(null)} />
@@ -635,6 +667,10 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
 };
 
 const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
+    const [aiAnalysis, setAiAnalysis] = useState<string>('');
+    const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
+
     const analysisData = useMemo(() => {
         const totalReports = reports.length;
         if (totalReports === 0) {
@@ -674,6 +710,46 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount };
     }, [reports]);
     
+    const handleGenerateAnalysis = async () => {
+        setIsAnalyzing(true);
+        setAiAnalysis('');
+        setAnalysisError(null);
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const reportSummary = reports.map(({ type, locationName, description }) => ({ type, locationName, description }));
+
+            const prompt = `
+                You are an expert environmental data analyst for GreenMap. 
+                Based on the following JSON data of user-submitted reports, provide a concise analysis (around 150 words). 
+                The data includes tree plantations and pollution hotspots.
+
+                Your analysis should include:
+                1. A brief overview of the data.
+                2. Key trends or patterns you observe (e.g., ratio of plantation vs. pollution reports).
+                3. Actionable suggestions or recommendations for the community or local authorities.
+
+                Keep the tone optimistic and encouraging. Format the output in clear paragraphs. Do not use markdown.
+
+                Here is the data:
+                ${JSON.stringify(reportSummary, null, 2)}
+            `;
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+
+            setAiAnalysis(response.text);
+
+        } catch (error) {
+            console.error("AI Analysis Error:", error);
+            setAnalysisError("Failed to generate AI analysis. Please try again later.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
     const StatCard = ({ title, value, icon, delay = 0 }) => (
         <motion.div 
             className="bg-gray-700/50 p-6 rounded-lg shadow-lg flex items-center space-x-4"
@@ -755,6 +831,52 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                     </div>
                 </motion.div>
             </div>
+            
+            <motion.div
+                className="mt-8 bg-gray-700/50 p-6 rounded-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+            >
+                <h2 className="text-xl font-bold mb-4 text-emerald-400">✨ AI-Powered Insights</h2>
+                <p className="text-gray-300 mb-4">
+                    Get an automated analysis of the current environmental reports. Our AI will identify trends and suggest potential actions.
+                </p>
+                <button
+                    onClick={handleGenerateAnalysis}
+                    disabled={isAnalyzing}
+                    className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center"
+                >
+                    {isAnalyzing ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Analyzing...
+                        </>
+                    ) : (
+                        'Generate Analysis'
+                    )}
+                </button>
+
+                {analysisError && (
+                    <div className="mt-4 p-4 bg-red-900/50 border border-red-500 text-red-300 rounded-lg">
+                        <p>{analysisError}</p>
+                    </div>
+                )}
+
+                {aiAnalysis && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        transition={{ delay: 0.2 }}
+                        className="mt-4 p-4 bg-gray-900/30 border border-gray-600 rounded-lg"
+                    >
+                        <p className="text-white whitespace-pre-wrap font-sans leading-relaxed">{aiAnalysis}</p>
+                    </motion.div>
+                )}
+            </motion.div>
         </PageContainer>
     );
 };
