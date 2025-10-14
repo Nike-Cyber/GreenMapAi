@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Report, ReportType } from './types';
@@ -54,6 +54,19 @@ const FeedbackIcon = () => (
     </svg>
 );
 
+const SearchIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+    </svg>
+);
+
+const SpeakerIcon: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
+      <path d="M6 8a1 1 0 011-1h1v4H7a1 1 0 01-1-1V8z" />
+      <path fillRule="evenodd" d="M10 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zM3 8a1 1 0 011-1h1v4H4a1 1 0 01-1-1V8zm13 0a1 1 0 011-1h1v4h-1a1 1 0 01-1-1V8z" clipRule="evenodd" />
+    </svg>
+);
+
 // --- MOCK DATA & HELPERS ---
 
 const initialReports: Report[] = [
@@ -71,7 +84,7 @@ const mockNewsData = [
     { id: 3, title: "Community Gardens Transform Urban Landscapes", excerpt: "Cities are embracing green spaces, with community-led projects improving air quality and biodiversity.", date: "2024-05-15", imageUrl: "https://picsum.photos/seed/news3/400/200" },
 ];
 
-const createLeafletIcon = (color: string) => {
+const createLeafletIcon = (color: string, content: string) => {
     const iconHtml = `
       <div style="
         background-color: ${color};
@@ -86,7 +99,7 @@ const createLeafletIcon = (color: string) => {
         box-shadow: 0 4px 8px rgba(0,0,0,0.3);
       ">
         <div style="transform: rotate(45deg); color: white;">
-          ${color === '#4CAF50' ? '🌳' : '⚠️'}
+          ${content}
         </div>
       </div>
     `;
@@ -99,8 +112,10 @@ const createLeafletIcon = (color: string) => {
     });
 };
 
-const treeMarkerIcon = createLeafletIcon('#4CAF50');
-const pollutionMarkerIcon = createLeafletIcon('#F44336');
+const treeMarkerIcon = createLeafletIcon('#4CAF50', '🌳');
+const pollutionMarkerIcon = createLeafletIcon('#F44336', '⚠️');
+const searchMarkerIcon = createLeafletIcon('#2196F3', '📍');
+
 
 // --- APP LAYOUT COMPONENTS ---
 
@@ -244,15 +259,35 @@ interface MapComponentProps {
     onEditReport: (report: Report) => void;
     editingReportId: string | null;
     onMarkerDragEnd: (reportId: string, newLatLng: L.LatLng) => void;
+    searchResult: { lat: number; lng: number } | null;
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onViewDetails, onEditReport, editingReportId, onMarkerDragEnd }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onViewDetails, onEditReport, editingReportId, onMarkerDragEnd, searchResult }) => {
     const MapClickHandler = () => {
         useMapEvents({
             click: (e) => onMapClick(e.latlng),
         });
         return null;
     };
+
+    const FlyToMarker: React.FC<{position: {lat: number, lng: number}}> = ({ position }) => {
+        const map = useMap();
+        useEffect(() => {
+            if (position) {
+                map.flyTo([position.lat, position.lng], 15, {
+                    animate: true,
+                    duration: 1.5
+                });
+            }
+        }, [position, map]);
+        
+        return position ? (
+             <Marker position={[position.lat, position.lng]} icon={searchMarkerIcon}>
+                <Tooltip permanent>Search Result</Tooltip>
+            </Marker>
+        ) : null;
+    };
+
 
     return (
         <MapContainer center={[51.505, -0.09]} zoom={13} scrollWheelZoom={true} className="h-full w-full z-0">
@@ -290,6 +325,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onView
                     </Popup>
                 </Marker>
             ))}
+            <FlyToMarker position={searchResult} />
         </MapContainer>
     );
 };
@@ -309,6 +345,7 @@ const Chatbot = () => {
         { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today?", sender: 'bot' }
     ]);
     const [inputValue, setInputValue] = useState('');
+    const [speakingId, setSpeakingId] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -316,6 +353,35 @@ const Chatbot = () => {
     };
 
     useEffect(scrollToBottom, [messages]);
+    
+    // Cleanup speech synthesis on component unmount or close
+    useEffect(() => {
+        return () => {
+            speechSynthesis.cancel();
+        };
+    }, []);
+
+    const handleSpeak = (message: ChatMessage) => {
+        if (!('speechSynthesis' in window)) {
+            alert("Sorry, your browser doesn't support text-to-speech.");
+            return;
+        }
+
+        // If the same message is clicked again, stop speaking
+        if (speakingId === message.id) {
+            speechSynthesis.cancel();
+            setSpeakingId(null);
+            return;
+        }
+        
+        const utterance = new SpeechSynthesisUtterance(message.text);
+        utterance.onstart = () => setSpeakingId(message.id);
+        utterance.onend = () => setSpeakingId(null);
+        utterance.onerror = () => setSpeakingId(null);
+        
+        speechSynthesis.cancel(); // Stop any previous speech
+        speechSynthesis.speak(utterance);
+    };
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
@@ -376,8 +442,15 @@ const Chatbot = () => {
                         <div className="flex-1 p-4 overflow-y-auto">
                             {messages.map(msg => (
                                 <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
-                                    <div className={`max-w-3/4 p-2 rounded-lg text-white ${msg.sender === 'user' ? 'bg-emerald-600' : 'bg-gray-600'}`}>
-                                        {msg.text}
+                                     <div className={`flex items-end gap-2 max-w-[90%]`}>
+                                        {msg.sender === 'bot' && (
+                                            <button onClick={() => handleSpeak(msg)} className="mb-1" aria-label="Read message aloud">
+                                                <SpeakerIcon isSpeaking={speakingId === msg.id} />
+                                            </button>
+                                        )}
+                                        <div className={`p-2 rounded-lg text-white ${msg.sender === 'user' ? 'bg-emerald-600' : 'bg-gray-600'}`}>
+                                            {msg.text}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -498,6 +571,8 @@ const DashboardPage: React.FC<{
     const [isFetchingLocation, setIsFetchingLocation] = useState(false);
     const [editingReport, setEditingReport] = useState<Report | null>(null);
     const [viewingReport, setViewingReport] = useState<Report | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResult, setSearchResult] = useState<{ lat: number; lng: number } | null>(null);
 
     const treeCount = useMemo(() => reports.filter(r => r.type === ReportType.TreePlantation).length, [reports]);
     const pollutionCount = useMemo(() => reports.filter(r => r.type === ReportType.PollutionHotspot).length, [reports]);
@@ -545,6 +620,24 @@ const DashboardPage: React.FC<{
             });
         }
     };
+    
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                setSearchResult({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+            } else {
+                alert("Location not found.");
+            }
+        } catch (error) {
+            console.error("Search error:", error);
+            alert("Failed to search for location.");
+        }
+    };
+
 
     return (
         <div className="h-full w-full relative">
@@ -563,6 +656,22 @@ const DashboardPage: React.FC<{
                     )}
                 </motion.div>
             </div>
+             <motion.form 
+                onSubmit={handleSearch}
+                initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+                className="absolute top-4 right-4 z-10 flex items-center bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg"
+            >
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search for a location..."
+                    className="bg-transparent text-white placeholder-gray-400 py-2 px-4 focus:outline-none w-48 sm:w-64"
+                />
+                <button type="submit" className="text-white bg-emerald-500 hover:bg-emerald-600 p-2.5 rounded-r-lg transition-colors" aria-label="Search">
+                    <SearchIcon />
+                </button>
+            </motion.form>
             <MapComponent 
                 reports={reports} 
                 onMapClick={handleMapClick} 
@@ -570,6 +679,7 @@ const DashboardPage: React.FC<{
                 onEditReport={setEditingReport}
                 editingReportId={editingReport?.id || null}
                 onMarkerDragEnd={handleMarkerDragEnd}
+                searchResult={searchResult}
             />
             <AnimatePresence>
                 {formInitialData && <ReportForm position={formInitialData.position} initialLocationName={formInitialData.locationName} onClose={() => setFormInitialData(null)} onSubmit={handleFormSubmit} />}
