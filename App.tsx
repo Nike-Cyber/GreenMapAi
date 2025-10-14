@@ -978,71 +978,73 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount };
     }, [reports]);
     
-    const handleGenerateAnalysis = async () => {
+    const handleGenerateAnalysis = () => {
         setIsAnalyzing(true);
         setAiAnalysis(null);
         setAnalysisError(null);
 
-        if (!process.env.API_KEY) {
-            setAnalysisError("AI Analysis is not configured. Please add your API_KEY as an environment variable in your deployment settings (e.g., Vercel) to enable this feature.");
-            setIsAnalyzing(false);
-            return;
-        }
-
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const reportSummary = reports.map(({ type, locationName, description }) => ({ type, locationName, description }));
-            
-            if (reportSummary.length === 0) {
-                 setAnalysisError("Not enough data to generate an analysis. Please add some reports first.");
-                 setIsAnalyzing(false);
-                 return;
+        setTimeout(() => {
+            if (reports.length === 0) {
+                setAnalysisError("Not enough data to generate an analysis. Please add some reports first.");
+                setIsAnalyzing(false);
+                return;
             }
 
-            const responseSchema = {
-                type: Type.OBJECT,
-                properties: {
-                    summary: { type: Type.STRING, description: 'A concise overview of the data (around 100 words).' },
-                    observations: { 
-                        type: Type.ARRAY, 
-                        items: { type: Type.STRING },
-                        description: 'A list of 2-3 key trends or patterns observed in the data.'
-                    },
-                    recommendations: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: 'A list of 2-3 actionable suggestions for the community.'
-                    },
-                    score: {
-                        type: Type.NUMBER,
-                        description: 'A positivity score from 1 (very bad) to 10 (very good) based on the ratio of tree plantations to pollution reports.'
-                    }
-                },
-                required: ["summary", "observations", "recommendations", "score"]
-            };
+            const { totalReports, treeCount, pollutionCount } = analysisData;
+            const treeRatio = totalReports > 0 ? treeCount / totalReports : 0;
 
-            const prompt = `You are an expert environmental data analyst for GreenMap. Analyze the provided JSON data of user-submitted reports. Fill the provided JSON schema with your analysis. Keep the tone optimistic and encouraging.
+            let mockResult: AIAnalysisResult;
 
-            Data: ${JSON.stringify(reportSummary, null, 2)}`;
-            
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                 config: {
-                    responseMimeType: "application/json",
-                    responseSchema: responseSchema,
-                },
-            });
+            if (treeRatio >= 0.6) {
+                mockResult = {
+                    summary: `The analysis of ${totalReports} reports shows a strong positive trend. The community is actively engaged in reforestation, with tree planting activities significantly outnumbering pollution reports. This indicates a healthy and proactive approach to environmental conservation.`,
+                    observations: [
+                        "A majority of reports are for tree plantations, highlighting successful community engagement.",
+                        "Pollution hotspots, while fewer, are still present and require attention.",
+                        "Recent activity shows a consistent effort in greening urban areas."
+                    ],
+                    recommendations: [
+                        "Organize targeted cleanup events for the identified pollution hotspots.",
+                        "Share success stories on the community gallery to inspire more participation.",
+                        "Consider partnering with local schools for educational planting events."
+                    ],
+                    score: Math.round(Math.min(10, 7 + treeRatio * 3))
+                };
+            } else if (treeRatio >= 0.4) {
+                 mockResult = {
+                    summary: `The data from ${totalReports} reports indicates a balanced mix of activities. While there are commendable tree planting efforts, the number of pollution reports suggests that there are key areas needing environmental cleanup and attention. The community is active on both fronts.`,
+                    observations: [
+                        "There is a near-even split between positive (planting) and negative (pollution) reports.",
+                        "Urban centers show a high concentration of both types of reports.",
+                        "Community engagement appears steady, but could be boosted with targeted campaigns."
+                    ],
+                    recommendations: [
+                        "Launch a 'Green and Clean' campaign to simultaneously address both planting and cleanup.",
+                        "Focus on recycling education to reduce waste at pollution hotspots.",
+                        "Identify and reward the most active community members to encourage others."
+                    ],
+                    score: Math.round(Math.min(10, 4 + treeRatio * 4))
+                };
+            } else {
+                 mockResult = {
+                    summary: `Analysis of the ${totalReports} reports highlights a critical need for action. Pollution hotspots are currently a more frequent type of report than tree planting activities. This presents an opportunity for the community to rally together and focus on cleanup and restoration efforts.`,
+                    observations: [
+                        "Pollution reports currently outweigh tree plantation reports.",
+                        "Industrial areas and waterways are common locations for pollution hotspots.",
+                        "There is an opportunity to increase positive environmental actions."
+                    ],
+                    recommendations: [
+                        "Prioritize and organize large-scale cleanup events for the most-reported pollution areas.",
+                        "Create awareness campaigns about the impact of pollution and ways to reduce waste.",
+                        "Initiate a community challenge to increase the number of tree plantation reports next month."
+                    ],
+                    score: Math.round(Math.max(1, 1 + treeRatio * 4))
+                };
+            }
 
-            const resultJson = JSON.parse(response.text);
-            setAiAnalysis(resultJson);
-
-        } catch (error) {
-            console.error("AI Analysis Error:", error);
-            setAnalysisError("Failed to generate AI analysis. The model may be unable to process the request. Please try again later.");
-        } finally {
+            setAiAnalysis(mockResult);
             setIsAnalyzing(false);
-        }
+        }, 2000); // Simulate a 2-second analysis time
     };
 
     const StatCard = ({ title, value, icon, delay = 0 }) => (
