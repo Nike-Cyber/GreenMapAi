@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
@@ -9,10 +8,22 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // --- ICONS (as React Components) ---
 
+const SunIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+    </svg>
+);
+
+const MoonIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+    </svg>
+);
+
 const TreeIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
     <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 4a1 1 0 012 0v5.012a2.5 2.5 0 011.237 1.237l.001.002a2.5 2.5 0 11-4.476 0L9 9.012V4z" />
-    <path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zM4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clipRule="evenodd" />
+    <path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000 16zM4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clipRule="evenodd" />
   </svg>
 );
 
@@ -62,7 +73,7 @@ const SearchIcon = () => (
 );
 
 const SpeakerIcon: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
       <path d="M6 8a1 1 0 011-1h1v4H7a1 1 0 01-1-1V8z" />
       <path fillRule="evenodd" d="M10 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zM3 8a1 1 0 011-1h1v4H4a1 1 0 01-1-1V8zm13 0a1 1 0 011-1h1v4h-1a1 1 0 01-1-1V8z" clipRule="evenodd" />
     </svg>
@@ -76,6 +87,14 @@ const CommunityIcon = () => (
 
 // --- MOCK DATA & HELPERS ---
 
+interface NewsArticle {
+    id: number | string;
+    title: string;
+    excerpt: string;
+    date: string;
+    imageUrl: string;
+}
+
 const initialReports: Report[] = [
     { id: '1', type: ReportType.TreePlantation, latitude: 51.505, longitude: -0.09, locationName: "Central Park London", description: "Planted 50 oak trees.", reportedBy: "Eco Warriors", timestamp: "2024-05-20T10:00:00Z" },
     { id: '2', type: ReportType.PollutionHotspot, latitude: 51.51, longitude: -0.1, locationName: "River Thames Bank", description: "Large amount of plastic waste.", reportedBy: "GreenPeace", timestamp: "2024-05-18T14:30:00Z" },
@@ -85,7 +104,7 @@ const initialReports: Report[] = [
     { id: '6', type: ReportType.TreePlantation, latitude: 51.50, longitude: -0.13, locationName: "Soho Square Gardens", description: "Added new flower beds and 5 trees.", reportedBy: "Eco Warriors", timestamp: "2024-03-10T12:00:00Z" },
 ];
 
-const mockNewsData = [
+const mockNewsData: NewsArticle[] = [
     { id: 1, title: "Global Reforestation Efforts Reach New Heights", excerpt: "A new report shows a 15% increase in worldwide tree planting initiatives over the past year.", date: "2024-05-20", imageUrl: "https://picsum.photos/seed/news1/400/200" },
     { id: 2, title: "Innovative Technology Turns Plastic Waste Into Fuel", excerpt: "Startups are developing new methods to tackle the plastic pollution crisis in our oceans.", date: "2024-05-18", imageUrl: "https://picsum.photos/seed/news2/400/200" },
     { id: 3, title: "Community Gardens Transform Urban Landscapes", excerpt: "Cities are embracing green spaces, with community-led projects improving air quality and biodiversity.", date: "2024-05-15", imageUrl: "https://picsum.photos/seed/news3/400/200" },
@@ -126,15 +145,15 @@ const searchMarkerIcon = createLeafletIcon('#2196F3', '📍');
 
 // --- APP LAYOUT COMPONENTS ---
 
-const Sidebar: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+const Sidebar: React.FC<{ onLogout: () => void; toggleTheme: () => void; currentTheme: string; }> = ({ onLogout, toggleTheme, currentTheme }) => {
     const navItemClasses = "flex items-center px-4 py-3 text-lg font-medium rounded-md transition-all duration-300 w-full";
     const activeClasses = "bg-emerald-500 text-white shadow-lg";
-    const inactiveClasses = "text-gray-300 hover:bg-gray-700 hover:text-white";
+    const inactiveClasses = "text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white";
 
     return (
-        <aside className="w-64 bg-gray-800/80 backdrop-blur-sm text-white flex flex-col z-30 shadow-2xl">
-            <div className="p-4 border-b border-gray-700">
-                <Link to="/dashboard" className="text-3xl font-bold text-emerald-400 flex items-center justify-center">
+        <aside className="w-64 bg-white dark:bg-gray-800/80 backdrop-blur-sm text-gray-800 dark:text-white flex flex-col z-30 shadow-2xl">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <Link to="/dashboard" className="text-3xl font-bold text-emerald-500 dark:text-emerald-400 flex items-center justify-center">
                     <span className="text-4xl mr-2">🌍</span>GreenMap
                 </Link>
             </div>
@@ -148,11 +167,18 @@ const Sidebar: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 <NavLink to="/about" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><InfoIcon />About</NavLink>
                 <NavLink to="/feedback" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><FeedbackIcon />Feedback</NavLink>
             </nav>
-            <div className="p-4 border-t border-gray-700">
+            <div className="p-4 mt-auto border-t border-gray-200 dark:border-gray-700">
+                <button onClick={toggleTheme} className="w-full flex items-center justify-center px-4 py-2 mb-4 text-md font-medium rounded-md transition-all duration-300 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 ring-1 ring-gray-300 dark:ring-gray-600">
+                    {currentTheme === 'light' ? 
+                        <MoonIcon /> : 
+                        <SunIcon />
+                    }
+                    <span className="ml-3">Switch to {currentTheme === 'light' ? 'Dark' : 'Light'} Mode</span>
+                </button>
                 <div className="flex justify-center space-x-4 mb-4">
-                    <a href="#" className="text-gray-400 hover:text-emerald-400 transition-colors">LinkedIn</a>
-                    <a href="#" className="text-gray-400 hover:text-emerald-400 transition-colors">Twitter</a>
-                    <a href="#" className="text-gray-400 hover:text-emerald-400 transition-colors">Instagram</a>
+                    <a href="#" className="text-gray-500 dark:text-gray-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors">LinkedIn</a>
+                    <a href="#" className="text-gray-500 dark:text-gray-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors">Twitter</a>
+                    <a href="#" className="text-gray-500 dark:text-gray-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors">Instagram</a>
                 </div>
                 <button onClick={onLogout} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">
                     Logout
@@ -221,36 +247,36 @@ const ReportForm: React.FC<ReportFormProps> = ({ position, reportToEdit, onClose
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50"
+            className="fixed inset-0 bg-gray-500/50 dark:bg-black/50 flex justify-center items-center z-50"
             onClick={onClose}
         >
-            <div className="bg-gray-800 text-white rounded-lg shadow-2xl p-8 w-full max-w-md m-4" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold mb-4 text-emerald-400">{isEditMode ? 'Edit Report' : 'Report an Event'}</h2>
+            <div className="bg-white dark:bg-gray-800 text-gray-800 dark:text-white rounded-lg shadow-2xl p-8 w-full max-w-md m-4" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">{isEditMode ? 'Edit Report' : 'Report an Event'}</h2>
                 <form onSubmit={handleSubmit}>
                      <div className="mb-4">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Location Name</label>
-                        <input type="text" value={locationName} onChange={e => setLocationName(e.target.value)} required className="w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Location Name</label>
+                        <input type="text" value={locationName} onChange={e => setLocationName(e.target.value)} required className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
                     </div>
                      <div className="mb-4">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Description</label>
-                        <textarea value={description} onChange={e => setDescription(e.target.value)} required rows={3} className="w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Description</label>
+                        <textarea value={description} onChange={e => setDescription(e.target.value)} required rows={3} className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
                     </div>
                      <div className="mb-4">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Report Type</label>
-                        <select value={type} onChange={e => setType(e.target.value as ReportType)} className="w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Report Type</label>
+                        <select value={type} onChange={e => setType(e.target.value as ReportType)} className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500">
                             <option value={ReportType.TreePlantation}>🌱 Tree Plantation</option>
                             <option value={ReportType.PollutionHotspot}>⚠️ Pollution Hotspot</option>
                         </select>
                     </div>
                      <div className="mb-6">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Coordinates</label>
-                         <p className="text-sm font-mono bg-gray-900 p-2 rounded">{currentLat.toFixed(5)}, {currentLng.toFixed(5)}</p>
-                         {isEditMode && <p className="text-xs text-gray-500 mt-1">Drag the marker on the map to change location.</p>}
-                         {!isEditMode && <p className="text-xs text-gray-500 mt-1">Location name is auto-fetched. You can edit it if needed.</p>}
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Coordinates</label>
+                         <p className="text-sm font-mono bg-gray-100 dark:bg-gray-900 p-2 rounded">{currentLat.toFixed(5)}, {currentLng.toFixed(5)}</p>
+                         {isEditMode && <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">Drag the marker on the map to change location.</p>}
+                         {!isEditMode && <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">Location name is auto-fetched. You can edit it if needed.</p>}
                     </div>
                     <div className="flex items-center justify-between">
                         <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">{isEditMode ? 'Update Report' : 'Submit Report'}</button>
-                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
+                        <button type="button" onClick={onClose} className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -268,9 +294,10 @@ interface MapComponentProps {
     editingReportId: string | null;
     onMarkerDragEnd: (reportId: string, newLatLng: L.LatLng) => void;
     searchResult: { lat: number; lng: number } | null;
+    theme: string;
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onViewDetails, onEditReport, editingReportId, onMarkerDragEnd, searchResult }) => {
+const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onViewDetails, onEditReport, editingReportId, onMarkerDragEnd, searchResult, theme }) => {
     const MapClickHandler = () => {
         useMapEvents({
             click: (e) => onMapClick(e.latlng),
@@ -298,10 +325,13 @@ const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onView
 
 
     return (
-        <MapContainer center={[51.505, -0.09]} zoom={13} scrollWheelZoom={true} className="h-full w-full z-0">
+        <MapContainer center={[51.505, -0.09]} zoom={13} scrollWheelZoom={true} className="h-full w-full z-0 bg-gray-300 dark:bg-gray-800">
             <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                url={theme === 'dark' 
+                    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                }
             />
             <MapClickHandler />
             {reports.map(report => (
@@ -322,9 +352,9 @@ const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onView
                         </Tooltip>
                     )}
                     <Popup>
-                        <div className="text-gray-800 w-48">
+                        <div className="text-gray-800 dark:text-gray-200 w-48">
                             <h3 className="font-bold text-base mb-1">{report.locationName}</h3>
-                            <p className="text-xs text-gray-500 mb-2">By {report.reportedBy}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">By {report.reportedBy}</p>
                             <div className="flex space-x-2 mt-2">
                                 <button onClick={() => onViewDetails(report)} className="flex-1 text-xs bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded-md transition-colors">Details</button>
                                 <button onClick={() => onEditReport(report)} className="flex-1 text-xs bg-gray-500 hover:bg-gray-600 text-white font-semibold py-1 px-2 rounded-md transition-colors">Edit</button>
@@ -439,11 +469,11 @@ const Chatbot = () => {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 50, scale: 0.9 }}
                         transition={{ duration: 0.3, ease: 'easeOut' }}
-                        className="fixed bottom-24 right-6 w-80 h-96 bg-gray-800 rounded-xl shadow-2xl flex flex-col z-40"
+                        className="fixed bottom-24 right-6 w-80 h-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl flex flex-col z-40"
                     >
-                        <header className="bg-gray-900 p-3 flex justify-between items-center rounded-t-xl">
-                            <h3 className="text-white font-bold">EcoBot</h3>
-                            <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-white">
+                        <header className="bg-gray-100 dark:bg-gray-900 p-3 flex justify-between items-center rounded-t-xl">
+                            <h3 className="text-gray-900 dark:text-white font-bold">EcoBot</h3>
+                            <button onClick={() => setIsOpen(false)} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
                                 <CloseIcon />
                             </button>
                         </header>
@@ -456,7 +486,7 @@ const Chatbot = () => {
                                                 <SpeakerIcon isSpeaking={speakingId === msg.id} />
                                             </button>
                                         )}
-                                        <div className={`p-2 rounded-lg text-white ${msg.sender === 'user' ? 'bg-emerald-600' : 'bg-gray-600'}`}>
+                                        <div className={`p-2 rounded-lg ${msg.sender === 'user' ? 'bg-emerald-500 dark:bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white'}`}>
                                             {msg.text}
                                         </div>
                                     </div>
@@ -464,13 +494,13 @@ const Chatbot = () => {
                             ))}
                              <div ref={messagesEndRef} />
                         </div>
-                        <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-700">
+                        <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 dark:border-gray-700">
                             <input
                                 type="text"
                                 value={inputValue}
                                 onChange={e => setInputValue(e.target.value)}
                                 placeholder="Ask something..."
-                                className="w-full bg-gray-700 text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                             />
                         </form>
                     </motion.div>
@@ -484,19 +514,19 @@ const Chatbot = () => {
 // --- PAGES ---
 
 const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => (
-    <div className="h-screen w-screen bg-gray-900 flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-cover bg-center" style={{backgroundImage: "url('https://picsum.photos/1920/1080?blur=5&grayscale')", filter: 'opacity(0.2)'}}></div>
+    <div className="h-screen w-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 bg-cover bg-center opacity-40 dark:opacity-20" style={{backgroundImage: "url('https://picsum.photos/1920/1080?blur=5&grayscale')"}}></div>
         <motion.div
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative bg-gray-800 bg-opacity-70 backdrop-blur-lg p-10 rounded-2xl shadow-2xl text-white text-center w-full max-w-sm"
+            className="relative bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-10 rounded-2xl shadow-2xl text-gray-900 dark:text-white text-center w-full max-w-sm"
         >
-            <h1 className="text-5xl font-bold text-emerald-400 mb-2">GreenMap</h1>
-            <p className="text-gray-300 mb-8">Mapping a sustainable future, together.</p>
+            <h1 className="text-5xl font-bold text-emerald-500 dark:text-emerald-400 mb-2">GreenMap</h1>
+            <p className="text-gray-600 dark:text-gray-300 mb-8">Mapping a sustainable future, together.</p>
             <div className="space-y-4">
-                <input type="email" placeholder="Email" defaultValue="demo@greenmap.com" className="w-full p-3 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                <input type="password" placeholder="Password" defaultValue="password" className="w-full p-3 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="email" placeholder="Email" defaultValue="demo@greenmap.com" className="w-full p-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="password" placeholder="Password" defaultValue="password" className="w-full p-3 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
             <button onClick={onLogin} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 mt-8 rounded-lg transition-transform duration-300 hover:scale-105">
                 Login
@@ -511,13 +541,13 @@ const WelcomeScreen: React.FC<{ username: string }> = ({ username }) => (
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0.5 } }}
-        className="fixed inset-0 bg-gray-900 bg-opacity-80 backdrop-blur-md flex justify-center items-center z-50"
+        className="fixed inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md flex justify-center items-center z-50"
     >
         <motion.div
             initial={{ scale: 0.5, y: 50 }}
             animate={{ scale: 1, y: 0, transition: { delay: 0.2, type: 'spring', stiffness: 120 } }}
         >
-            <h1 className="text-5xl font-bold text-white">Welcome, <span className="text-emerald-400">{username}</span>!</h1>
+            <h1 className="text-5xl font-bold text-gray-900 dark:text-white">Welcome, <span className="text-emerald-500 dark:text-emerald-400">{username}</span>!</h1>
         </motion.div>
     </motion.div>
 );
@@ -531,34 +561,34 @@ const ReportDetailPanel: React.FC<{ report: Report | null; onClose: () => void }
                     animate={{ x: 0 }}
                     exit={{ x: '100%' }}
                     transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                    className="fixed top-0 right-0 h-full w-96 bg-gray-800 shadow-2xl z-40 flex flex-col"
+                    className="fixed top-0 right-0 h-full w-96 bg-white dark:bg-gray-800 shadow-2xl z-40 flex flex-col"
                 >
-                    <div className="p-6 bg-gray-900/50 flex justify-between items-center">
-                        <h2 className="text-2xl font-bold text-emerald-400">Report Details</h2>
-                        <button onClick={onClose} className="text-gray-400 hover:text-white"><CloseIcon /></button>
+                    <div className="p-6 bg-gray-100 dark:bg-gray-900/50 flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">Report Details</h2>
+                        <button onClick={onClose} className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"><CloseIcon /></button>
                     </div>
-                    <div className="p-6 flex-1 text-white overflow-y-auto">
+                    <div className="p-6 flex-1 text-gray-800 dark:text-white overflow-y-auto">
                         <div className="mb-4">
                             <h3 className="font-bold text-xl">{report.locationName}</h3>
-                            <p className={`text-sm font-semibold ${report.type === ReportType.TreePlantation ? 'text-green-400' : 'text-red-400'}`}>
+                            <p className={`text-sm font-semibold ${report.type === ReportType.TreePlantation ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
                                 {report.type === ReportType.TreePlantation ? '🌱 Tree Plantation' : '⚠️ Pollution Hotspot'}
                             </p>
                         </div>
-                        <div className="space-y-4 text-gray-300">
+                        <div className="space-y-4 text-gray-700 dark:text-gray-300">
                             <div>
-                                <label className="font-bold text-gray-500 text-xs uppercase">Description</label>
+                                <label className="font-bold text-gray-500 dark:text-gray-500 text-xs uppercase">Description</label>
                                 <p>{report.description}</p>
                             </div>
                             <div>
-                                <label className="font-bold text-gray-500 text-xs uppercase">Coordinates</label>
+                                <label className="font-bold text-gray-500 dark:text-gray-500 text-xs uppercase">Coordinates</label>
                                 <p className="font-mono text-sm">{report.latitude.toFixed(5)}, {report.longitude.toFixed(5)}</p>
                             </div>
                             <div>
-                                <label className="font-bold text-gray-500 text-xs uppercase">Reported By</label>
+                                <label className="font-bold text-gray-500 dark:text-gray-500 text-xs uppercase">Reported By</label>
                                 <p>{report.reportedBy}</p>
                             </div>
                             <div>
-                                <label className="font-bold text-gray-500 text-xs uppercase">Date</label>
+                                <label className="font-bold text-gray-500 dark:text-gray-500 text-xs uppercase">Date</label>
                                 <p>{new Date(report.timestamp).toLocaleString()}</p>
                             </div>
                         </div>
@@ -574,7 +604,8 @@ const DashboardPage: React.FC<{
     reports: Report[],
     addReport: (reportData: Omit<Report, 'id' | 'reportedBy' | 'timestamp'>) => void,
     updateReport: (reportData: Report) => void,
-}> = ({ reports, addReport, updateReport }) => {
+    theme: string
+}> = ({ reports, addReport, updateReport, theme }) => {
     const [formInitialData, setFormInitialData] = useState<{ position: { lat: number; lng: number }; locationName: string } | null>(null);
     const [isFetchingLocation, setIsFetchingLocation] = useState(false);
     const [editingReport, setEditingReport] = useState<Report | null>(null);
@@ -650,31 +681,31 @@ const DashboardPage: React.FC<{
     return (
         <div className="h-full w-full relative">
             <div className="absolute top-4 left-4 z-10 flex flex-col space-y-3">
-                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="bg-gray-800 bg-opacity-70 backdrop-blur-md p-4 rounded-lg shadow-lg text-white w-64">
-                    <h3 className="font-bold text-lg text-emerald-400">Statistics</h3>
+                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md p-4 rounded-lg shadow-lg text-gray-900 dark:text-white w-64">
+                    <h3 className="font-bold text-lg text-emerald-600 dark:text-emerald-400">Statistics</h3>
                     <p className="text-lg">🌱 Trees Planted: <span className="font-bold">{treeCount}</span></p>
                     <p className="text-lg">⚠️ Pollution Hotspots: <span className="font-bold">{pollutionCount}</span></p>
                 </motion.div>
-                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }} className="bg-gray-800 bg-opacity-70 backdrop-blur-md p-4 rounded-lg shadow-lg text-white w-64">
-                    <h3 className="font-bold text-lg text-emerald-400">How to help?</h3>
+                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md p-4 rounded-lg shadow-lg text-gray-900 dark:text-white w-64">
+                    <h3 className="font-bold text-lg text-emerald-600 dark:text-emerald-400">How to help?</h3>
                     {isFetchingLocation ? (
-                        <p className="text-sm text-emerald-300 animate-pulse">Fetching location...</p>
+                        <p className="text-sm text-emerald-500 dark:text-emerald-300 animate-pulse">Fetching location...</p>
                     ) : (
-                        <p className="text-sm">Click anywhere on the map to add a new report. Click a marker for more options.</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Click anywhere on the map to add a new report. Click a marker for more options.</p>
                     )}
                 </motion.div>
             </div>
              <motion.form 
                 onSubmit={handleSearch}
                 initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-                className="absolute top-4 right-4 z-10 flex items-center bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg"
+                className="absolute top-4 right-4 z-10 flex items-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg"
             >
                 <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search for a location..."
-                    className="bg-transparent text-white placeholder-gray-400 py-2 px-4 focus:outline-none w-48 sm:w-64"
+                    className="bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-2 px-4 focus:outline-none w-48 sm:w-64"
                 />
                 <button type="submit" className="text-white bg-emerald-500 hover:bg-emerald-600 p-2.5 rounded-r-lg transition-colors" aria-label="Search">
                     <SearchIcon />
@@ -688,6 +719,7 @@ const DashboardPage: React.FC<{
                 editingReportId={editingReport?.id || null}
                 onMarkerDragEnd={handleMarkerDragEnd}
                 searchResult={searchResult}
+                theme={theme}
             />
             <AnimatePresence>
                 {formInitialData && <ReportForm position={formInitialData.position} initialLocationName={formInitialData.locationName} onClose={() => setFormInitialData(null)} onSubmit={handleFormSubmit} />}
@@ -704,11 +736,11 @@ const PageContainer: React.FC<{title: string; children: React.ReactNode}> = ({ t
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3 }}
-        className="text-white p-8"
+        className="text-gray-900 dark:text-white p-8"
     >
         <div className="container mx-auto">
-            <h1 className="text-4xl font-bold text-emerald-400 mb-8">{title}</h1>
-            <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm p-8 rounded-lg">
+            <h1 className="text-4xl font-bold text-emerald-600 dark:text-emerald-400 mb-8">{title}</h1>
+            <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-8 rounded-lg">
                 {children}
             </div>
         </div>
@@ -792,12 +824,12 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
         }
     };
 
-    const selectClasses = "bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
-    const inputClasses = "bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all";
+    const selectClasses = "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
+    const inputClasses = "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all";
 
     return (
         <PageContainer title="All Reports">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 p-4 bg-gray-700/30 rounded-lg gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 p-4 bg-gray-100/30 dark:bg-gray-700/30 rounded-lg gap-4">
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
                     <input 
                         type="text" 
@@ -807,7 +839,7 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                         className={`${inputClasses} w-full sm:w-auto`}
                     />
                     <div className="flex items-center space-x-2">
-                        <label htmlFor="filter-type" className="text-gray-400">Filter:</label>
+                        <label htmlFor="filter-type" className="text-gray-600 dark:text-gray-400">Filter:</label>
                         <select id="filter-type" value={filterType} onChange={e => setFilterType(e.target.value as ReportType | 'ALL')} className={selectClasses}>
                             <option value="ALL">All Types</option>
                             <option value={ReportType.TreePlantation}>🌱 Tree Plantation</option>
@@ -815,7 +847,7 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                         </select>
                     </div>
                      <div className="flex items-center space-x-2">
-                        <label htmlFor="sort-by" className="text-gray-400">Sort:</label>
+                        <label htmlFor="sort-by" className="text-gray-600 dark:text-gray-400">Sort:</label>
                         <select id="sort-by" value={sortBy} onChange={e => setSortBy(e.target.value as 'newest' | 'oldest' | 'name')} className={selectClasses}>
                             <option value="newest">Newest</option>
                             <option value="oldest">Oldest</option>
@@ -835,8 +867,8 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-gray-700/50">
-                        <tr className="border-b border-gray-600">
+                    <thead className="bg-gray-100/50 dark:bg-gray-700/50">
+                        <tr className="border-b border-gray-200 dark:border-gray-600">
                             <th className="p-3">Type</th>
                             <th className="p-3">Location Name</th>
                             <th className="p-3">Description</th>
@@ -846,7 +878,7 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                     <tbody>
                         {filteredAndSortedReports.length > 0 ? (
                             filteredAndSortedReports.map(report => (
-                                <tr key={report.id} className="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
+                                <tr key={report.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-100/50 dark:hover:bg-gray-700/50 transition-colors">
                                     <td className="p-3 whitespace-nowrap">{report.type === ReportType.TreePlantation ? '🌱 Plantation' : '⚠️ Pollution'}</td>
                                     <td className="p-3">{report.locationName}</td>
                                     <td className="p-3">{report.description}</td>
@@ -855,7 +887,7 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={4} className="text-center p-8 text-gray-500">
+                                <td colSpan={4} className="text-center p-8 text-gray-500 dark:text-gray-500">
                                     No reports match your search criteria.
                                 </td>
                             </tr>
@@ -882,7 +914,7 @@ const Gauge: React.FC<{ score: number }> = ({ score }) => {
     return (
         <div className="w-48 h-24 relative">
             <svg viewBox="0 0 100 50" className="w-full h-full">
-                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#4B5563" strokeWidth="10" strokeLinecap="round" />
+                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" className="stroke-gray-300 dark:stroke-gray-700" strokeWidth="10" strokeLinecap="round" />
                 <motion.path
                     d="M 10 50 A 40 40 0 0 1 90 50"
                     fill="none"
@@ -896,7 +928,7 @@ const Gauge: React.FC<{ score: number }> = ({ score }) => {
             </svg>
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center">
                  <span className="text-3xl font-bold" style={{ color }}>{score}</span>
-                 <p className="text-xs text-gray-400">Positivity Score</p>
+                 <p className="text-xs text-gray-500 dark:text-gray-400">Positivity Score</p>
             </div>
         </div>
     );
@@ -1015,14 +1047,14 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
 
     const StatCard = ({ title, value, icon, delay = 0 }) => (
         <motion.div 
-            className="bg-gray-700/50 p-6 rounded-lg shadow-lg flex items-center space-x-4"
+            className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg shadow-lg flex items-center space-x-4"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: delay * 0.15 }}
         >
-            <div className="text-3xl text-emerald-400">{icon}</div>
+            <div className="text-3xl text-emerald-500 dark:text-emerald-400">{icon}</div>
             <div>
-                <p className="text-gray-400 text-sm">{title}</p>
+                <p className="text-gray-600 dark:text-gray-400 text-sm">{title}</p>
                 <p className="text-2xl font-bold">{value}</p>
             </div>
         </motion.div>
@@ -1035,7 +1067,7 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5 + delay * 0.15 }}
         >
-            <span className="text-emerald-400 mr-3 mt-1">✓</span>
+            <span className="text-emerald-500 dark:text-emerald-400 mr-3 mt-1">✓</span>
             <span>{children}</span>
         </motion.li>
     );
@@ -1050,13 +1082,13 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                  <motion.div 
-                    className="bg-gray-700/50 p-6 rounded-lg"
+                    className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 }}
                 >
-                    <h2 className="text-xl font-bold mb-4 text-emerald-400">Report Type Distribution</h2>
-                    <div className="w-full bg-gray-600 rounded-full h-8 flex overflow-hidden">
+                    <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">Report Type Distribution</h2>
+                    <div className="w-full bg-gray-300 dark:bg-gray-600 rounded-full h-8 flex overflow-hidden">
                         <motion.div
                             className="bg-green-500 flex justify-center items-center text-white font-bold"
                             initial={{ width: 0 }}
@@ -1079,12 +1111,12 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 </motion.div>
 
                  <motion.div 
-                    className="bg-gray-700/50 p-6 rounded-lg"
+                    className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
                 >
-                    <h2 className="text-xl font-bold mb-4 text-emerald-400">Reports Over Time</h2>
+                    <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">Reports Over Time</h2>
                     <div className="flex justify-between items-end h-48 space-x-2">
                         {analysisData.monthlyData.length > 0 ? (
                             analysisData.monthlyData.map((data, index) => (
@@ -1097,24 +1129,24 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                                         transition={{ duration: 0.5, delay: 0.6 + index * 0.05, ease: "easeOut" }}
                                         title={`${data.label}: ${data.value} reports`}
                                     />
-                                    <p className="text-xs text-gray-400 mt-1">{data.label}</p>
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{data.label}</p>
                                 </div>
                             ))
                         ) : (
-                            <p className="text-gray-500 w-full text-center">No monthly data available.</p>
+                            <p className="text-gray-600 dark:text-gray-500 w-full text-center">No monthly data available.</p>
                         )}
                     </div>
                 </motion.div>
             </div>
             
             <motion.div
-                className="mt-8 bg-gray-700/50 p-6 rounded-lg"
+                className="mt-8 bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
             >
-                <h2 className="text-xl font-bold mb-4 text-emerald-400">✨ AI-Powered Insights</h2>
-                <p className="text-gray-300 mb-4">
+                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ AI-Powered Insights</h2>
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
                     Get an automated analysis of the current environmental reports. Our AI will identify trends and suggest potential actions.
                 </p>
                 <button
@@ -1136,7 +1168,7 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 </button>
 
                 {analysisError && (
-                    <div className="mt-4 p-4 bg-red-900/50 border border-red-500 text-red-300 rounded-lg">
+                    <div className="mt-4 p-4 bg-red-100/50 dark:bg-red-900/50 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg">
                         <p>{analysisError}</p>
                     </div>
                 )}
@@ -1146,14 +1178,14 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         transition={{ delay: 0.2 }}
-                        className="mt-4 p-4 bg-gray-900/30 border border-gray-600 rounded-lg"
+                        className="mt-4 p-4 bg-gray-200/30 dark:bg-gray-900/30 border border-gray-300 dark:border-gray-600 rounded-lg"
                     >
                         <div className="grid md:grid-cols-3 gap-6">
                             <div className="md:col-span-2">
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="font-bold text-lg mb-2 text-emerald-300">Summary</motion.h4>
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">Summary</motion.h4>
                                 <motion.p 
                                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-                                    className="text-gray-300 font-sans leading-relaxed">{aiAnalysis.summary}</motion.p>
+                                    className="text-gray-700 dark:text-gray-300 font-sans leading-relaxed">{aiAnalysis.summary}</motion.p>
                             </div>
                             <motion.div 
                                 initial={{ opacity: 0, scale:0.8 }} animate={{ opacity: 1, scale:1 }} transition={{ delay: 0.5 }}
@@ -1161,15 +1193,15 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                                 <Gauge score={aiAnalysis.score} />
                             </motion.div>
                         </div>
-                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-6 mt-6 border-t border-gray-700 pt-6">
+                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-6 mt-6 border-t border-gray-300 dark:border-gray-700 pt-6">
                             <div>
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="font-bold text-lg mb-2 text-emerald-300">🔎 Key Observations</motion.h4>
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">🔎 Key Observations</motion.h4>
                                 <ul className="space-y-2">
                                     {aiAnalysis.observations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
                                 </ul>
                             </div>
                             <div>
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="font-bold text-lg mb-2 text-emerald-300">💡 Recommendations</motion.h4>
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">💡 Recommendations</motion.h4>
                                 <ul className="space-y-2">
                                     {aiAnalysis.recommendations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
                                 </ul>
@@ -1182,29 +1214,104 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
     );
 };
 
+interface AddNewsFormProps {
+    onClose: () => void;
+    onSubmit: (article: Omit<NewsArticle, 'id' | 'date'>) => void;
+}
 
-const NewsPage: React.FC = () => (
-    <PageContainer title="Latest Environmental News">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {mockNewsData.map(article => (
-                 <motion.div 
-                    key={article.id} 
-                    className="bg-gray-700/50 rounded-lg overflow-hidden shadow-lg hover:shadow-emerald-500/20 transition-shadow duration-300"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: article.id * 0.1 }}
-                >
-                    <img src={article.imageUrl} alt={article.title} className="w-full h-48 object-cover" />
-                    <div className="p-6">
-                        <h3 className="font-bold text-xl mb-2 text-emerald-400">{article.title}</h3>
-                        <p className="text-gray-300 text-base mb-4">{article.excerpt}</p>
-                        <p className="text-gray-500 text-sm">{new Date(article.date).toLocaleDateString()}</p>
+const AddNewsForm: React.FC<AddNewsFormProps> = ({ onClose, onSubmit }) => {
+    const [title, setTitle] = useState('');
+    const [excerpt, setExcerpt] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!title.trim() || !excerpt.trim() || !imageUrl.trim()) {
+            alert("Please fill out all fields.");
+            return;
+        }
+        onSubmit({ title, excerpt, imageUrl });
+        onClose();
+    };
+    
+    return (
+        <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50"
+            onClick={onClose}>
+            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg shadow-2xl p-8 w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
+               <h2 className="text-2xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">Add News Article</h2>
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Title</label>
+                        <input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
                     </div>
-                </motion.div>
-            ))}
-        </div>
-    </PageContainer>
-);
+                     <div className="mb-4">
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Excerpt</label>
+                        <textarea value={excerpt} onChange={e => setExcerpt(e.target.value)} required rows={3} className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                    </div>
+                    <div className="mb-4">
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Image URL</label>
+                        <input type="url" value={imageUrl} onChange={e => setImageUrl(e.target.value)} required placeholder="https://example.com/image.jpg" className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+                    </div>
+                    <div className="flex items-center justify-end space-x-4 mt-6">
+                        <button type="button" onClick={onClose} className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
+                        <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Add Article</button>
+                    </div>
+                </form>
+            </div>
+        </motion.div>
+    )
+};
+
+
+const NewsPage: React.FC<{
+    newsData: NewsArticle[],
+    addNewsArticle: (article: Omit<NewsArticle, 'id' | 'date'>) => void
+}> = ({ newsData, addNewsArticle }) => {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const sortedNews = useMemo(() => 
+        [...newsData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [newsData]);
+
+    return (
+        <PageContainer title="Latest Environmental News">
+            <div className="flex justify-end mb-6">
+                <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 20 20" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Add News Article
+                </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {sortedNews.map((article, index) => (
+                     <motion.div 
+                        key={article.id} 
+                        className="bg-gray-100/50 dark:bg-gray-700/50 rounded-lg overflow-hidden shadow-lg hover:shadow-emerald-500/10 dark:hover:shadow-emerald-500/20 transition-shadow duration-300"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                    >
+                        <img src={article.imageUrl} alt={article.title} className="w-full h-48 object-cover" />
+                        <div className="p-6">
+                            <h3 className="font-bold text-xl mb-2 text-emerald-600 dark:text-emerald-400">{article.title}</h3>
+                            <p className="text-gray-700 dark:text-gray-300 text-base mb-4">{article.excerpt}</p>
+                            <p className="text-gray-600 dark:text-gray-500 text-sm">{new Date(article.date).toLocaleDateString()}</p>
+                        </div>
+                    </motion.div>
+                ))}
+            </div>
+            <AnimatePresence>
+                {isModalOpen && <AddNewsForm onClose={() => setIsModalOpen(false)} onSubmit={addNewsArticle} />}
+            </AnimatePresence>
+        </PageContainer>
+    );
+};
 
 const CommunityPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'chat' | 'gallery'>('chat');
@@ -1283,16 +1390,16 @@ const CommunityPage: React.FC = () => {
 
     return (
         <PageContainer title="Community Hub">
-            <div className="flex border-b border-gray-700 mb-6">
+            <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
                 <button
                     onClick={() => setActiveTab('chat')}
-                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'chat' ? 'border-b-2 border-emerald-400 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'chat' ? 'border-b-2 border-emerald-500 dark:border-emerald-400 text-emerald-500 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
                 >
                     💬 Chat
                 </button>
                 <button
                     onClick={() => setActiveTab('gallery')}
-                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'gallery' ? 'border-b-2 border-emerald-400 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'gallery' ? 'border-b-2 border-emerald-500 dark:border-emerald-400 text-emerald-500 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
                 >
                     🖼️ Gallery
                 </button>
@@ -1305,10 +1412,10 @@ const CommunityPage: React.FC = () => {
                             {chatMessages.map(msg => (
                                 <div key={msg.id} className={`flex items-start gap-3 ${msg.user === 'Alex Green' ? 'flex-row-reverse' : ''}`}>
                                     <img src={`https://picsum.photos/seed/${msg.avatarSeed}/40`} alt={msg.user} className="w-10 h-10 rounded-full" />
-                                    <div className={`p-3 rounded-lg max-w-md ${msg.user === 'Alex Green' ? 'bg-emerald-800' : 'bg-gray-700'}`}>
+                                    <div className={`p-3 rounded-lg max-w-md ${msg.user === 'Alex Green' ? 'bg-emerald-700 dark:bg-emerald-800 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>
                                         <div className="flex items-baseline gap-2">
-                                            <p className="font-bold text-emerald-300">{msg.user}</p>
-                                            <p className="text-xs text-gray-400">{msg.timestamp}</p>
+                                            <p className="font-bold text-emerald-500 dark:text-emerald-300">{msg.user}</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">{msg.timestamp}</p>
                                         </div>
                                         <p>{msg.text}</p>
                                     </div>
@@ -1322,7 +1429,7 @@ const CommunityPage: React.FC = () => {
                                 value={chatInput}
                                 onChange={e => setChatInput(e.target.value)}
                                 placeholder="Type your message..."
-                                className="flex-1 bg-gray-700 text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                             />
                             <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Send</button>
                         </form>
@@ -1342,7 +1449,7 @@ const CommunityPage: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {galleryImages.map(img => (
-                                <motion.div key={img.id} layoutId={img.src} onClick={() => setSelectedImg(img.src)} className="group cursor-pointer aspect-w-1 aspect-h-1 bg-gray-700 rounded-lg overflow-hidden">
+                                <motion.div key={img.id} layoutId={img.src} onClick={() => setSelectedImg(img.src)} className="group cursor-pointer aspect-w-1 aspect-h-1 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
                                     <img src={img.src} alt={img.caption} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" />
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
                                         <p className="text-white text-sm">{img.caption}</p>
@@ -1365,23 +1472,23 @@ const CommunityPage: React.FC = () => {
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50"
                         onClick={() => setIsUploadModalOpen(false)}>
-                        <div className="bg-gray-800 text-white rounded-lg shadow-2xl p-8 w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
-                           <h2 className="text-2xl font-bold mb-4 text-emerald-400">Upload Your Photo</h2>
+                        <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg shadow-2xl p-8 w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
+                           <h2 className="text-2xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">Upload Your Photo</h2>
                             <form onSubmit={handleUpload}>
                                 <div className="mb-4">
-                                    <label className="block text-gray-400 text-sm font-bold mb-2">Photo</label>
-                                     <label htmlFor="photo-upload" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 inline-block">
+                                    <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Photo</label>
+                                     <label htmlFor="photo-upload" className="cursor-pointer bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300 inline-block">
                                         {uploadFile ? 'Change Photo' : 'Select Photo'}
                                     </label>
                                     <input id="photo-upload" type="file" accept="image/*" onChange={handleFileChange} required className="hidden"/>
                                     {uploadPreview && <img src={uploadPreview} alt="Preview" className="mt-4 rounded-lg max-h-48" />}
                                 </div>
                                 <div className="mb-4">
-                                    <label className="block text-gray-400 text-sm font-bold mb-2">Caption</label>
-                                    <input type="text" value={uploadCaption} onChange={e => setUploadCaption(e.target.value)} required className="w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+                                    <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Caption</label>
+                                    <input type="text" value={uploadCaption} onChange={e => setUploadCaption(e.target.value)} required className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
                                 </div>
                                 <div className="flex items-center justify-end space-x-4">
-                                    <button type="button" onClick={() => setIsUploadModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
+                                    <button type="button" onClick={() => setIsUploadModalOpen(false)} className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
                                     <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Upload</button>
                                 </div>
                             </form>
@@ -1439,13 +1546,13 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
 
     const StatCard = ({ value, label, icon, delay }) => (
         <motion.div 
-            className="bg-gray-700/50 p-4 rounded-lg text-center"
+            className="bg-gray-100/50 dark:bg-gray-700/50 p-4 rounded-lg text-center"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: delay * 0.1 + 0.3 }}
         >
             <p className="text-3xl font-bold">{icon} {value}</p>
-            <p className="text-gray-400 text-sm">{label}</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">{label}</p>
         </motion.div>
     );
 
@@ -1470,27 +1577,27 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                             >
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-gray-400 text-sm font-bold mb-2">Name</label>
+                                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Name</label>
                                         <input 
                                             type="text" 
                                             value={tempName} 
                                             onChange={e => setTempName(e.target.value)} 
-                                            className="w-full max-w-sm bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                                            className="w-full max-w-sm bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-gray-400 text-sm font-bold mb-2">Email</label>
+                                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Email</label>
                                         <input 
                                             type="email" 
                                             value={tempEmail} 
                                             onChange={e => setTempEmail(e.target.value)} 
-                                            className="w-full max-w-sm bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                                            className="w-full max-w-sm bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500" 
                                         />
                                     </div>
                                 </div>
                                 <div className="mt-6 flex space-x-4">
                                     <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Save Changes</button>
-                                    <button type="button" onClick={handleCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
+                                    <button type="button" onClick={handleCancel} className="bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
                                 </div>
                             </motion.form>
                         ) : (
@@ -1502,8 +1609,8 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                                 transition={{ duration: 0.3 }}
                             >
                                 <h2 className="text-3xl font-bold">{name}</h2>
-                                <p className="text-emerald-400">{email}</p>
-                                <p className="mt-2 text-gray-300">Joined on {new Date().toLocaleDateString()}</p>
+                                <p className="text-emerald-500 dark:text-emerald-400">{email}</p>
+                                <p className="mt-2 text-gray-700 dark:text-gray-300">Joined on {new Date().toLocaleDateString()}</p>
                                 <button onClick={handleEdit} className="mt-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition-transform duration-300 hover:scale-105">
                                     Edit Profile
                                 </button>
@@ -1513,8 +1620,8 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 </div>
             </div>
             
-            <div className="mt-12 border-t border-gray-700 pt-8">
-                 <h3 className="text-2xl font-bold text-emerald-400 mb-4">My Contributions</h3>
+            <div className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8">
+                 <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-4">My Contributions</h3>
                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <StatCard value={treeReportsCount} label="Trees Planted" icon="🌳" delay={0} />
                     <StatCard value={pollutionReportsCount} label="Pollution Hotspots" icon="⚠️" delay={1} />
@@ -1523,13 +1630,13 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
             </div>
 
             <div className="mt-8">
-                <h3 className="text-2xl font-bold text-emerald-400 mb-4">Recent Activity</h3>
+                <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mb-4">Recent Activity</h3>
                 <div className="space-y-4">
                     {recentActivities.length > 0 ? (
                         recentActivities.map((report, index) => (
                              <motion.div
                                 key={report.id}
-                                className="bg-gray-700/50 p-4 rounded-lg flex items-center justify-between"
+                                className="bg-gray-100/50 dark:bg-gray-700/50 p-4 rounded-lg flex items-center justify-between"
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.1 + 0.5 }}
@@ -1538,13 +1645,13 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                                     <p className="font-bold">
                                         {report.type === ReportType.TreePlantation ? '🌱' : '⚠️'} {report.locationName}
                                     </p>
-                                    <p className="text-sm text-gray-400">{report.description}</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">{report.description}</p>
                                 </div>
-                                <p className="text-sm text-gray-500 whitespace-nowrap">{new Date(report.timestamp).toLocaleDateString()}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-500 whitespace-nowrap">{new Date(report.timestamp).toLocaleDateString()}</p>
                             </motion.div>
                         ))
                     ) : (
-                        <p className="text-gray-500">No reports submitted yet. Go make your first contribution!</p>
+                        <p className="text-gray-500 dark:text-gray-500">No reports submitted yet. Go make your first contribution!</p>
                     )}
                 </div>
             </div>
@@ -1565,19 +1672,19 @@ const AboutPage = () => {
 
     return (
         <PageContainer title="About GreenMap">
-            <p className="text-lg leading-relaxed">
+            <p className="text-lg leading-relaxed text-gray-700 dark:text-gray-300">
                 GreenMap is a community-driven platform dedicated to visualizing and tracking environmental actions around the globe. Our mission is to empower individuals and organizations to make a tangible impact by mapping both positive contributions, like tree plantations, and areas of concern, such as pollution hotspots.
             </p>
-            <p className="mt-4 text-lg leading-relaxed">
+            <p className="mt-4 text-lg leading-relaxed text-gray-700 dark:text-gray-300">
                 By providing a clear, interactive map, we aim to raise awareness, encourage participation, and foster a global community committed to protecting our planet. Join us in creating a greener, cleaner world, one report at a time.
             </p>
             <div className="mt-12">
-                <h2 className="text-3xl font-bold text-emerald-400 mb-6 text-center">Our Team</h2>
+                <h2 className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-6 text-center">Our Team</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
                     {teamMembers.map((member, index) => (
                         <motion.div
                             key={member.name}
-                            className="text-center bg-gray-700/50 p-6 rounded-lg shadow-lg hover:shadow-emerald-500/20 transition-shadow duration-300"
+                            className="text-center bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg shadow-lg hover:shadow-emerald-500/10 dark:hover:shadow-emerald-500/20 transition-shadow duration-300"
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
@@ -1585,10 +1692,10 @@ const AboutPage = () => {
                             <img
                                 src={`https://picsum.photos/seed/${member.seed}/150`}
                                 alt={member.name}
-                                className="w-24 h-24 rounded-full mx-auto mb-4 ring-4 ring-gray-600"
+                                className="w-24 h-24 rounded-full mx-auto mb-4 ring-4 ring-gray-300 dark:ring-gray-600"
                             />
-                            <h3 className="font-bold text-xl text-white">{member.name}</h3>
-                            <p className="text-emerald-400">{member.role}</p>
+                            <h3 className="font-bold text-xl text-gray-900 dark:text-white">{member.name}</h3>
+                            <p className="text-emerald-500 dark:text-emerald-400">{member.role}</p>
                         </motion.div>
                     ))}
                 </div>
@@ -1619,12 +1726,12 @@ const FeedbackPage: React.FC = () => {
         }, 1500);
     };
 
-    const inputClasses = "w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
+    const inputClasses = "w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
     
     return (
         <PageContainer title="Submit Feedback">
             <div className="max-w-xl mx-auto">
-                 <p className="mb-8 text-gray-300 text-center">
+                 <p className="mb-8 text-gray-700 dark:text-gray-300 text-center">
                     We value your input! Whether you've found a bug, have an idea for a new feature, or just want to share your thoughts, we'd love to hear from you.
                 </p>
                 <AnimatePresence>
@@ -1633,7 +1740,7 @@ const FeedbackPage: React.FC = () => {
                             initial={{ opacity: 0, y: -20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 20 }}
-                            className="bg-green-800/50 border border-green-500 text-green-200 px-4 py-3 rounded-lg relative mb-6 text-center"
+                            className="bg-green-100/50 dark:bg-green-800/50 border border-green-400 dark:border-green-500 text-green-700 dark:text-green-200 px-4 py-3 rounded-lg relative mb-6 text-center"
                             role="alert"
                         >
                             <strong className="font-bold">Thank you! </strong>
@@ -1643,7 +1750,7 @@ const FeedbackPage: React.FC = () => {
                 </AnimatePresence>
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Feedback Type</label>
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Feedback Type</label>
                         <select value={feedbackType} onChange={e => setFeedbackType(e.target.value)} className={inputClasses}>
                             <option value="general">General Comment</option>
                             <option value="bug">Bug Report</option>
@@ -1651,7 +1758,7 @@ const FeedbackPage: React.FC = () => {
                         </select>
                     </div>
                      <div className="mb-6">
-                        <label className="block text-gray-400 text-sm font-bold mb-2">Message</label>
+                        <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Message</label>
                         <textarea 
                             value={message} 
                             onChange={e => setMessage(e.target.value)} 
@@ -1697,7 +1804,34 @@ const App: React.FC = () => {
             return initialReports;
         }
     });
+    const [newsData, setNewsData] = useState<NewsArticle[]>(() => {
+        try {
+            const savedNews = localStorage.getItem('greenmap_news');
+            return savedNews ? JSON.parse(savedNews) : mockNewsData;
+        } catch (error) {
+            console.error("Failed to load news from localStorage", error);
+            return mockNewsData;
+        }
+    });
+
+    const [theme, setTheme] = useState(() => {
+        const savedTheme = localStorage.getItem('greenmap_theme');
+        if (savedTheme) {
+            return savedTheme;
+        }
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    });
+
     const location = useLocation();
+
+    useEffect(() => {
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('greenmap_theme', theme);
+    }, [theme]);
 
     useEffect(() => {
         try {
@@ -1706,6 +1840,18 @@ const App: React.FC = () => {
             console.error("Failed to save reports to localStorage", error);
         }
     }, [reports]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('greenmap_news', JSON.stringify(newsData));
+        } catch (error) {
+            console.error("Failed to save news to localStorage", error);
+        }
+    }, [newsData]);
+
+    const toggleTheme = () => {
+        setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
+    };
 
     const handleLogin = () => {
         setIsAuthenticated(true);
@@ -1734,6 +1880,15 @@ const App: React.FC = () => {
         );
     };
 
+    const addNewsArticle = (articleData: Omit<NewsArticle, 'id' | 'date'>) => {
+        const newArticle: NewsArticle = {
+            ...articleData,
+            id: Date.now(),
+            date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+        };
+        setNewsData(prev => [newArticle, ...prev]);
+    };
+
     if (!isAuthenticated) {
         return <LoginPage onLogin={handleLogin} />;
     }
@@ -1745,16 +1900,16 @@ const App: React.FC = () => {
             <AnimatePresence>
                 {showWelcomeScreen && <WelcomeScreen username="Alex Green" />}
             </AnimatePresence>
-            <div className={`flex h-screen bg-gray-900 overflow-hidden transition-filter duration-500 ${showWelcomeScreen ? 'filter blur-sm' : ''}`}>
-                <Sidebar onLogout={handleLogout} />
-                <main className={`flex-1 ${isDashboard ? '' : 'overflow-y-auto'}`}>
+            <div className={`flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden transition-filter duration-500 ${showWelcomeScreen ? 'filter blur-sm' : ''}`}>
+                <Sidebar onLogout={handleLogout} toggleTheme={toggleTheme} currentTheme={theme} />
+                <main className={`flex-1 ${isDashboard ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <AnimatePresence mode="wait">
                         <Routes location={location} key={location.pathname}>
-                            <Route path="/dashboard" element={<DashboardPage reports={reports} addReport={addReport} updateReport={updateReport} />} />
+                            <Route path="/dashboard" element={<DashboardPage reports={reports} addReport={addReport} updateReport={updateReport} theme={theme} />} />
                             <Route path="/reports" element={<ReportsPage reports={reports} />} />
                             <Route path="/analysis" element={<AnalysisPage reports={reports} />} />
                             <Route path="/community" element={<CommunityPage />} />
-                            <Route path="/news" element={<NewsPage />} />
+                            <Route path="/news" element={<NewsPage newsData={newsData} addNewsArticle={addNewsArticle} />} />
                             <Route path="/profile" element={<ProfilePage reports={reports}/>} />
                             <Route path="/about" element={<AboutPage />} />
                             <Route path="/feedback" element={<FeedbackPage />} />
