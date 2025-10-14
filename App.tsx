@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Report, ReportType } from './types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // --- ICONS (as React Components) ---
 
@@ -64,6 +65,12 @@ const SpeakerIcon: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
       <path d="M6 8a1 1 0 011-1h1v4H7a1 1 0 01-1-1V8z" />
       <path fillRule="evenodd" d="M10 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zM3 8a1 1 0 011-1h1v4H4a1 1 0 01-1-1V8zm13 0a1 1 0 011-1h1v4h-1a1 1 0 01-1-1V8z" clipRule="evenodd" />
+    </svg>
+);
+
+const CommunityIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
     </svg>
 );
 
@@ -135,6 +142,7 @@ const Sidebar: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 <NavLink to="/dashboard" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><DashboardIcon />Dashboard</NavLink>
                 <NavLink to="/reports" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><ReportIcon />Reports</NavLink>
                 <NavLink to="/analysis" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><AnalysisIcon />Analysis</NavLink>
+                <NavLink to="/community" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><CommunityIcon />Community</NavLink>
                 <NavLink to="/news" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><NewsIcon />News</NavLink>
                 <NavLink to="/profile" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><UserIcon />Profile</NavLink>
                 <NavLink to="/about" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><InfoIcon />About</NavLink>
@@ -859,8 +867,43 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
     );
 };
 
+interface AIAnalysisResult {
+    summary: string;
+    observations: string[];
+    recommendations: string[];
+    score: number;
+}
+
+const Gauge: React.FC<{ score: number }> = ({ score }) => {
+    const percentage = Math.min(Math.max((score / 10) * 100, 0), 100);
+    const rotation = (percentage / 100) * 180 - 90;
+    const color = score > 7 ? '#34D399' : score > 4 ? '#FBBF24' : '#F87171';
+    
+    return (
+        <div className="w-48 h-24 relative">
+            <svg viewBox="0 0 100 50" className="w-full h-full">
+                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#4B5563" strokeWidth="10" strokeLinecap="round" />
+                <motion.path
+                    d="M 10 50 A 40 40 0 0 1 90 50"
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    initial={{ strokeDasharray: "0, 251.2" }}
+                    animate={{ strokeDasharray: `${(percentage / 100) * 125.6}, 251.2` }}
+                    transition={{ duration: 1.5, ease: "easeInOut" }}
+                />
+            </svg>
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center">
+                 <span className="text-3xl font-bold" style={{ color }}>{score}</span>
+                 <p className="text-xs text-gray-400">Positivity Score</p>
+            </div>
+        </div>
+    );
+};
+
 const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
-    const [aiAnalysis, setAiAnalysis] = useState<string>('');
+    const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
 
@@ -905,39 +948,60 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
     
     const handleGenerateAnalysis = async () => {
         setIsAnalyzing(true);
-        setAiAnalysis('');
+        setAiAnalysis(null);
         setAnalysisError(null);
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const reportSummary = reports.map(({ type, locationName, description }) => ({ type, locationName, description }));
+            
+            if (reportSummary.length === 0) {
+                 setAnalysisError("Not enough data to generate an analysis. Please add some reports first.");
+                 setIsAnalyzing(false);
+                 return;
+            }
 
-            const prompt = `
-                You are an expert environmental data analyst for GreenMap. 
-                Based on the following JSON data of user-submitted reports, provide a concise analysis (around 150 words). 
-                The data includes tree plantations and pollution hotspots.
+            const responseSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING, description: 'A concise overview of the data (around 100 words).' },
+                    observations: { 
+                        type: Type.ARRAY, 
+                        items: { type: Type.STRING },
+                        description: 'A list of 2-3 key trends or patterns observed in the data.'
+                    },
+                    recommendations: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                        description: 'A list of 2-3 actionable suggestions for the community.'
+                    },
+                    score: {
+                        type: Type.NUMBER,
+                        description: 'A positivity score from 1 (very bad) to 10 (very good) based on the ratio of tree plantations to pollution reports.'
+                    }
+                },
+                required: ["summary", "observations", "recommendations", "score"]
+            };
 
-                Your analysis should include:
-                1. A brief overview of the data.
-                2. Key trends or patterns you observe (e.g., ratio of plantation vs. pollution reports).
-                3. Actionable suggestions or recommendations for the community or local authorities.
+            const prompt = `You are an expert environmental data analyst for GreenMap. Analyze the provided JSON data of user-submitted reports. Fill the provided JSON schema with your analysis. Keep the tone optimistic and encouraging.
 
-                Keep the tone optimistic and encouraging. Format the output in clear paragraphs. Do not use markdown.
-
-                Here is the data:
-                ${JSON.stringify(reportSummary, null, 2)}
-            `;
+            Data: ${JSON.stringify(reportSummary, null, 2)}`;
             
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: prompt,
+                 config: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema,
+                },
             });
 
-            setAiAnalysis(response.text);
+            const resultJson = JSON.parse(response.text);
+            setAiAnalysis(resultJson);
 
         } catch (error) {
             console.error("AI Analysis Error:", error);
-            setAnalysisError("Failed to generate AI analysis. Please try again later.");
+            setAnalysisError("Failed to generate AI analysis. The model may be unable to process the request. Please try again later.");
         } finally {
             setIsAnalyzing(false);
         }
@@ -956,6 +1020,18 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 <p className="text-2xl font-bold">{value}</p>
             </div>
         </motion.div>
+    );
+    
+    const AnalysisListItem: React.FC<{children: React.ReactNode, delay: number}> = ({ children, delay }) => (
+        <motion.li 
+            className="flex items-start"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5 + delay * 0.15 }}
+        >
+            <span className="text-emerald-400 mr-3 mt-1">✓</span>
+            <span>{children}</span>
+        </motion.li>
     );
 
     return (
@@ -1066,7 +1142,33 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                         transition={{ delay: 0.2 }}
                         className="mt-4 p-4 bg-gray-900/30 border border-gray-600 rounded-lg"
                     >
-                        <p className="text-white whitespace-pre-wrap font-sans leading-relaxed">{aiAnalysis}</p>
+                        <div className="grid md:grid-cols-3 gap-6">
+                            <div className="md:col-span-2">
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="font-bold text-lg mb-2 text-emerald-300">Summary</motion.h4>
+                                <motion.p 
+                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
+                                    className="text-gray-300 font-sans leading-relaxed">{aiAnalysis.summary}</motion.p>
+                            </div>
+                            <motion.div 
+                                initial={{ opacity: 0, scale:0.8 }} animate={{ opacity: 1, scale:1 }} transition={{ delay: 0.5 }}
+                                className="flex justify-center items-center">
+                                <Gauge score={aiAnalysis.score} />
+                            </motion.div>
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-6 mt-6 border-t border-gray-700 pt-6">
+                            <div>
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="font-bold text-lg mb-2 text-emerald-300">🔎 Key Observations</motion.h4>
+                                <ul className="space-y-2">
+                                    {aiAnalysis.observations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
+                                </ul>
+                            </div>
+                            <div>
+                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="font-bold text-lg mb-2 text-emerald-300">💡 Recommendations</motion.h4>
+                                <ul className="space-y-2">
+                                    {aiAnalysis.recommendations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
+                                </ul>
+                            </div>
+                        </div>
                     </motion.div>
                 )}
             </motion.div>
@@ -1097,6 +1199,196 @@ const NewsPage: React.FC = () => (
         </div>
     </PageContainer>
 );
+
+const CommunityPage: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<'chat' | 'gallery'>('chat');
+
+    // Chat State
+    const [chatMessages, setChatMessages] = useState([
+        { id: 1, user: 'Eco Warrior', text: 'Welcome to the community chat! Let\'s discuss how we can make a difference.', timestamp: '10:30 AM', avatarSeed: 'warrior' },
+        { id: 2, user: 'Alex Green', text: 'Just reported a new tree plantation in Hyde Park! Feels great to contribute.', timestamp: '10:32 AM', avatarSeed: 'alex' },
+        { id: 3, user: 'Jane Doe', text: 'That\'s awesome, Alex! I\'m planning a cleanup event next weekend. Anyone interested?', timestamp: '10:35 AM', avatarSeed: 'jane' },
+    ]);
+    const [chatInput, setChatInput] = useState('');
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatMessages]);
+
+    const handleSendMessage = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (chatInput.trim() === '') return;
+        const newMessage = {
+            id: Date.now(),
+            user: 'Alex Green',
+            text: chatInput,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            avatarSeed: 'alex'
+        };
+        setChatMessages([...chatMessages, newMessage]);
+        setChatInput('');
+    };
+
+    // Gallery State
+    const [galleryImages, setGalleryImages] = useState([
+        { id: 1, src: 'https://picsum.photos/seed/gallery1/600/400', caption: 'Our community tree planting day was a huge success!', user: 'Eco Warriors' },
+        { id: 2, src: 'https://picsum.photos/seed/gallery2/600/400', caption: 'Cleaned up the local beach this morning.', user: 'Jane Doe' },
+        { id: 3, src: 'https://picsum.photos/seed/gallery3/600/400', caption: 'My new sapling in Hyde Park.', user: 'Alex Green' },
+        { id: 4, src: 'https://picsum.photos/seed/gallery4/600/400', caption: 'Before and after of the river cleanup project.', user: 'GreenPeace' },
+    ]);
+    const [selectedImg, setSelectedImg] = useState<string | null>(null);
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [uploadCaption, setUploadCaption] = useState('');
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setUploadFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setUploadPreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+    const handleUpload = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!uploadFile || !uploadCaption.trim()) {
+            alert("Please provide an image and a caption.");
+            return;
+        }
+        const newImage = {
+            id: Date.now(),
+            src: uploadPreview!,
+            caption: uploadCaption,
+            user: 'Alex Green'
+        };
+        setGalleryImages([newImage, ...galleryImages]);
+        setIsUploadModalOpen(false);
+        setUploadCaption('');
+        setUploadFile(null);
+        setUploadPreview(null);
+    };
+
+
+    return (
+        <PageContainer title="Community Hub">
+            <div className="flex border-b border-gray-700 mb-6">
+                <button
+                    onClick={() => setActiveTab('chat')}
+                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'chat' ? 'border-b-2 border-emerald-400 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+                >
+                    💬 Chat
+                </button>
+                <button
+                    onClick={() => setActiveTab('gallery')}
+                    className={`px-6 py-3 text-lg font-medium transition-colors ${activeTab === 'gallery' ? 'border-b-2 border-emerald-400 text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+                >
+                    🖼️ Gallery
+                </button>
+            </div>
+
+            <AnimatePresence mode="wait">
+                {activeTab === 'chat' ? (
+                    <motion.div key="chat" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col h-[65vh]">
+                        <div className="flex-1 overflow-y-auto pr-4 space-y-4">
+                            {chatMessages.map(msg => (
+                                <div key={msg.id} className={`flex items-start gap-3 ${msg.user === 'Alex Green' ? 'flex-row-reverse' : ''}`}>
+                                    <img src={`https://picsum.photos/seed/${msg.avatarSeed}/40`} alt={msg.user} className="w-10 h-10 rounded-full" />
+                                    <div className={`p-3 rounded-lg max-w-md ${msg.user === 'Alex Green' ? 'bg-emerald-800' : 'bg-gray-700'}`}>
+                                        <div className="flex items-baseline gap-2">
+                                            <p className="font-bold text-emerald-300">{msg.user}</p>
+                                            <p className="text-xs text-gray-400">{msg.timestamp}</p>
+                                        </div>
+                                        <p>{msg.text}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={chatEndRef} />
+                        </div>
+                        <form onSubmit={handleSendMessage} className="mt-4 flex gap-3">
+                            <input
+                                type="text"
+                                value={chatInput}
+                                onChange={e => setChatInput(e.target.value)}
+                                placeholder="Type your message..."
+                                className="flex-1 bg-gray-700 text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Send</button>
+                        </form>
+                    </motion.div>
+                ) : (
+                    <motion.div key="gallery" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <motion.div 
+                                onClick={() => setIsUploadModalOpen(true)} 
+                                className="group cursor-pointer aspect-w-1 aspect-h-1 rounded-lg border-2 border-dashed border-gray-600 hover:border-emerald-500 transition-colors duration-300 flex justify-center items-center"
+                                whileHover={{ scale: 1.05 }}
+                                transition={{ type: 'spring', stiffness: 300 }}
+                            >
+                                <div className="text-center text-gray-500 group-hover:text-emerald-400 transition-colors duration-300">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <p className="mt-2 font-bold">Upload Photo</p>
+                                </div>
+                            </motion.div>
+                            {galleryImages.map(img => (
+                                <motion.div key={img.id} layoutId={img.src} onClick={() => setSelectedImg(img.src)} className="group cursor-pointer aspect-w-1 aspect-h-1 bg-gray-700 rounded-lg overflow-hidden">
+                                    <img src={img.src} alt={img.caption} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                                        <p className="text-white text-sm">{img.caption}</p>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {selectedImg && (
+                    <motion.div onClick={() => setSelectedImg(null)} className="fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4">
+                        <motion.img layoutId={selectedImg} src={selectedImg} alt="Enlarged view" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+                    </motion.div>
+                )}
+                 {isUploadModalOpen && (
+                     <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50"
+                        onClick={() => setIsUploadModalOpen(false)}>
+                        <div className="bg-gray-800 text-white rounded-lg shadow-2xl p-8 w-full max-w-lg m-4" onClick={e => e.stopPropagation()}>
+                           <h2 className="text-2xl font-bold mb-4 text-emerald-400">Upload Your Photo</h2>
+                            <form onSubmit={handleUpload}>
+                                <div className="mb-4">
+                                    <label className="block text-gray-400 text-sm font-bold mb-2">Photo</label>
+                                     <label htmlFor="photo-upload" className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 inline-block">
+                                        {uploadFile ? 'Change Photo' : 'Select Photo'}
+                                    </label>
+                                    <input id="photo-upload" type="file" accept="image/*" onChange={handleFileChange} required className="hidden"/>
+                                    {uploadPreview && <img src={uploadPreview} alt="Preview" className="mt-4 rounded-lg max-h-48" />}
+                                </div>
+                                <div className="mb-4">
+                                    <label className="block text-gray-400 text-sm font-bold mb-2">Caption</label>
+                                    <input type="text" value={uploadCaption} onChange={e => setUploadCaption(e.target.value)} required className="w-full bg-gray-700 text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
+                                </div>
+                                <div className="flex items-center justify-end space-x-4">
+                                    <button type="button" onClick={() => setIsUploadModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-md transition duration-300">Cancel</button>
+                                    <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300">Upload</button>
+                                </div>
+                            </form>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </PageContainer>
+    );
+};
+
 
 const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -1457,6 +1749,7 @@ const App: React.FC = () => {
                             <Route path="/dashboard" element={<DashboardPage reports={reports} addReport={addReport} updateReport={updateReport} />} />
                             <Route path="/reports" element={<ReportsPage reports={reports} />} />
                             <Route path="/analysis" element={<AnalysisPage reports={reports} />} />
+                            <Route path="/community" element={<CommunityPage />} />
                             <Route path="/news" element={<NewsPage />} />
                             <Route path="/profile" element={<ProfilePage reports={reports}/>} />
                             <Route path="/about" element={<AboutPage />} />
