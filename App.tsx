@@ -951,6 +951,12 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         setAiAnalysis(null);
         setAnalysisError(null);
 
+        if (!process.env.API_KEY) {
+            setAnalysisError("AI Analysis is not configured. Please add your API_KEY as an environment variable in your deployment settings (e.g., Vercel) to enable this feature.");
+            setIsAnalyzing(false);
+            return;
+        }
+
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const reportSummary = reports.map(({ type, locationName, description }) => ({ type, locationName, description }));
@@ -1322,21 +1328,19 @@ const CommunityPage: React.FC = () => {
                         </form>
                     </motion.div>
                 ) : (
-                    <motion.div key="gallery" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            <motion.div 
+                     <motion.div key="gallery" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <div className="flex justify-end mb-4">
+                            <button 
                                 onClick={() => setIsUploadModalOpen(true)} 
-                                className="group cursor-pointer aspect-w-1 aspect-h-1 rounded-lg border-2 border-dashed border-gray-600 hover:border-emerald-500 transition-colors duration-300 flex justify-center items-center"
-                                whileHover={{ scale: 1.05 }}
-                                transition={{ type: 'spring', stiffness: 300 }}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center"
                             >
-                                <div className="text-center text-gray-500 group-hover:text-emerald-400 transition-colors duration-300">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    <p className="mt-2 font-bold">Upload Photo</p>
-                                </div>
-                            </motion.div>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                                Upload Photo
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {galleryImages.map(img => (
                                 <motion.div key={img.id} layoutId={img.src} onClick={() => setSelectedImg(img.src)} className="group cursor-pointer aspect-w-1 aspect-h-1 bg-gray-700 rounded-lg overflow-hidden">
                                     <img src={img.src} alt={img.caption} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" />
