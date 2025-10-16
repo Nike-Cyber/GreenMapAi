@@ -5,10 +5,6 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap }
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Report, ReportType } from './types';
-import { GoogleGenAI, Type, Chat } from "@google/genai";
-
-// FIX: Initialize Gemini AI client for use in Analysis and Chatbot components
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 // --- ICONS (as React Components) ---
 
@@ -393,16 +389,12 @@ const Chatbot = () => {
         { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today?", sender: 'bot' }
     ]);
     const [inputValue, setInputValue] = useState('');
-    // FIX: The `ChatMessage` id can be a string or number, so the state needs to allow for both.
     const [speakingId, setSpeakingId] = useState<number | string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
     const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
-    const [chatSession, setChatSession] = useState<Chat | null>(null);
     const [isBotTyping, setIsBotTyping] = useState(false);
-    const chatInitialized = useRef(false);
-
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -410,19 +402,6 @@ const Chatbot = () => {
 
     useEffect(scrollToBottom, [messages]);
     
-    useEffect(() => {
-        if (isOpen && !chatInitialized.current) {
-            const chat = ai.chats.create({
-                model: 'gemini-2.5-flash',
-                config: {
-                    systemInstruction: "You are EcoBot, a friendly and helpful assistant for the GreenMap application. Your goal is to help users understand how to use the app to report environmental events like tree plantations and pollution hotspots. Keep your answers concise and helpful."
-                }
-            });
-            setChatSession(chat);
-            chatInitialized.current = true;
-        }
-    }, [isOpen]);
-
     useEffect(() => {
         return () => {
             speechSynthesis.cancel();
@@ -438,7 +417,6 @@ const Chatbot = () => {
         }
 
         if (navigator.permissions) {
-            // FIX: Bypassing TypeScript error. 'microphone' is a valid but experimental permission name.
             navigator.permissions.query({ name: 'microphone' as any }).then(permissionStatus => {
                 setMicPermission(permissionStatus.state);
                 permissionStatus.onchange = () => {
@@ -504,10 +482,33 @@ const Chatbot = () => {
         speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
     };
+    
+    const getMockBotResponse = (userInput: string): string => {
+        const lowerInput = userInput.toLowerCase();
+        if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
+            return "Hello there! How can I help you with GreenMap today?";
+        }
+        if (lowerInput.includes('report') || lowerInput.includes('add')) {
+            return "You can add a new report by clicking anywhere on the map on the Dashboard page. A form will pop up for you to enter the details.";
+        }
+        if (lowerInput.includes('tree')) {
+            return "To report a tree plantation, click on the map, fill in the form, and select 'Tree Plantation' as the report type.";
+        }
+        if (lowerInput.includes('pollution')) {
+            return "To report a pollution hotspot, click on the map, fill in the form, and select 'Pollution Hotspot' as the report type.";
+        }
+        if (lowerInput.includes('help')) {
+            return "I can help you with questions about reporting events, viewing data analysis, or navigating the app. What would you like to know?";
+        }
+        if (lowerInput.includes('bye') || lowerInput.includes('thanks')) {
+            return "You're welcome! Happy to help. Have a great day!";
+        }
+        return "I'm not sure how to answer that. Could you try rephrasing? You can ask me about how to add reports or view analysis.";
+    };
 
-    const handleSendMessage = async (e: React.FormEvent) => {
+    const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (inputValue.trim() === '' || !chatSession || isBotTyping) return;
+        if (inputValue.trim() === '' || isBotTyping) return;
 
         const userMessage: ChatMessage = { id: Date.now(), text: inputValue, sender: 'user' };
         setMessages(prev => [...prev, userMessage]);
@@ -515,17 +516,13 @@ const Chatbot = () => {
         setInputValue('');
         setIsBotTyping(true);
 
-        try {
-            const response = await chatSession.sendMessage({ message: currentInput });
-            const botResponse: ChatMessage = { id: Date.now() + 1, text: response.text, sender: 'bot' };
+        // Simulate API call and bot thinking
+        setTimeout(() => {
+            const botText = getMockBotResponse(currentInput);
+            const botResponse: ChatMessage = { id: Date.now() + 1, text: botText, sender: 'bot' };
             setMessages(prev => [...prev, botResponse]);
-        } catch (error) {
-            console.error("Chatbot error:", error);
-            const errorResponse: ChatMessage = { id: Date.now() + 1, text: "Sorry, I'm having trouble connecting. Please try again later.", sender: 'bot' };
-            setMessages(prev => [...prev, errorResponse]);
-        } finally {
             setIsBotTyping(false);
-        }
+        }, 1000 + Math.random() * 500);
     };
 
     const isMicDisabled = micPermission === 'denied' || micPermission === 'unsupported';
@@ -583,7 +580,7 @@ const Chatbot = () => {
                                     onChange={e => setInputValue(e.target.value)}
                                     placeholder={isListening ? "Listening..." : isBotTyping ? "EcoBot is typing..." : "Ask something..."}
                                     className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    disabled={isBotTyping || !chatSession}
+                                    disabled={isBotTyping}
                                 />
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-1.5">
                                     <button
@@ -1116,73 +1113,44 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         setAiAnalysis(null);
         setAnalysisError(null);
 
-        try {
-            if (reports.length < 3) {
-                setAnalysisError("Not enough data for a meaningful analysis. Please add at least 3 reports.");
-                setIsAnalyzing(false);
-                return;
-            }
-
-            const reportsSummary = `Total reports: ${analysisData.totalReports}, Tree plantations: ${analysisData.treeCount}, Pollution hotspots: ${analysisData.pollutionCount}.`;
-            const recentReports = reports
-                .slice(0, 5)
-                .map(r => `- ${r.type} at ${r.locationName}: ${r.description}`)
-                .join('\n');
-            
-            const prompt = `
-                You are an environmental data analyst for a community mapping application called GreenMap.
-                Analyze the following environmental report data for a local community.
-
-                Data Summary:
-                ${reportsSummary}
-
-                Most Recent Reports:
-                ${recentReports}
-                
-                Based on this data, provide:
-                1. A concise summary (2-3 sentences) of the environmental situation.
-                2. 2-3 key, data-driven observations.
-                3. 2-3 actionable recommendations for the community.
-                4. A positivity score from 1 (very negative) to 10 (very positive), where a higher ratio of tree planting to pollution reports is better. The score should be an integer.
-                
-                The tone should be encouraging, insightful, and community-focused.
-            `;
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            summary: { type: Type.STRING, description: "A concise summary (2-3 sentences) of the environmental situation." },
-                            observations: {
-                                type: Type.ARRAY,
-                                items: { type: Type.STRING },
-                                description: "2-3 key, data-driven observations."
-                            },
-                            recommendations: {
-                                type: Type.ARRAY,
-                                items: { type: Type.STRING },
-                                description: "2-3 actionable recommendations for the community."
-                            },
-                            score: { type: Type.INTEGER, description: "A positivity score from 1 (very negative) to 10 (very positive)." }
-                        },
-                        required: ["summary", "observations", "recommendations", "score"]
-                    }
-                }
-            });
-
-            const resultJson = JSON.parse(response.text);
-            setAiAnalysis(resultJson);
-
-        } catch (error) {
-            console.error("AI analysis failed:", error);
-            setAnalysisError("Failed to generate AI analysis. The model may be overloaded. Please try again later.");
-        } finally {
+        if (reports.length < 3) {
+            setAnalysisError("Not enough data for a meaningful analysis. Please add at least 3 reports.");
             setIsAnalyzing(false);
+            return;
         }
+
+        // Simulate API call with a timeout
+        setTimeout(() => {
+            try {
+                // Generate a semi-dynamic mock analysis based on current data
+                const { treeCount, pollutionCount, totalReports } = analysisData;
+                const isPositiveTrend = treeCount >= pollutionCount;
+
+                const mockResult: AIAnalysisResult = {
+                    summary: `The community has actively reported ${totalReports} environmental events. There's a ${isPositiveTrend ? 'strong focus on positive actions like tree planting' : 'growing concern about pollution hotspots'}. Overall engagement is promising.`,
+                    observations: [
+                        `Tree plantations make up ${Math.round((treeCount / totalReports) * 100)}% of all reports, showing a proactive community spirit.`,
+                        `Pollution reports seem concentrated in specific areas, suggesting targeted cleanup efforts could be highly effective.`,
+                        `Community engagement has been consistent over the past few months, indicating a dedicated user base.`
+                    ],
+                    recommendations: [
+                        `Organize a community event focused on the most reported ${isPositiveTrend ? 'tree planting areas to amplify the effect' : 'pollution hotspots to address the issue'}.`,
+                        "Consider creating a local 'Green Team' to regularly monitor and report on environmental health.",
+                        "Share the success stories of tree planting on the Community Hub to inspire more people to participate."
+                    ],
+                    // Simple score calculation based on the ratio of good vs bad reports
+                    score: Math.max(1, Math.min(10, Math.round(6 + (treeCount - pollutionCount) / totalReports * 4))) 
+                };
+
+                setAiAnalysis(mockResult);
+
+            } catch (error) {
+                console.error("Mock analysis generation failed:", error);
+                setAnalysisError("Failed to generate analysis. An unexpected local error occurred.");
+            } finally {
+                setIsAnalyzing(false);
+            }
+        }, 1500 + Math.random() * 1000); // Simulate network and processing delay
     };
 
     const StatCard = ({ title, value, icon, delay = 0 }) => (
@@ -1285,9 +1253,9 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
             >
-                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ AI-Powered Insights</h2>
+                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ Simulated Insights</h2>
                 <p className="text-gray-700 dark:text-gray-300 mb-4">
-                    Get an automated analysis of the current environmental reports. Our AI will identify trends and suggest potential actions.
+                    Get an automated analysis of the current environmental reports. This simulation will identify trends and suggest potential actions.
                 </p>
                 <button
                     onClick={handleGenerateAnalysis}
