@@ -1,10 +1,14 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Report, ReportType } from './types';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Chat } from "@google/genai";
+
+// FIX: Initialize Gemini AI client for use in Analysis and Chatbot components
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 // --- ICONS (as React Components) ---
 
@@ -72,8 +76,8 @@ const SearchIcon = () => (
     </svg>
 );
 
-const MicrophoneIcon: React.FC<{ isListening: boolean }> = ({ isListening }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors duration-300 ${isListening ? 'text-red-500 animate-pulse' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+const MicrophoneIcon: React.FC<{ isListening: boolean; disabled?: boolean }> = ({ isListening, disabled }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors duration-300 ${isListening ? 'text-red-500 animate-pulse' : disabled ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 10v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
     </svg>
 );
@@ -311,7 +315,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onView
         return null;
     };
 
-    const FlyToMarker: React.FC<{position: {lat: number, lng: number}}> = ({ position }) => {
+    const FlyToMarker: React.FC<{position: {lat: number, lng: number} | null}> = ({ position }) => {
         const map = useMap();
         useEffect(() => {
             if (position) {
@@ -378,7 +382,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ reports, onMapClick, onView
 // --- CHATBOT COMPONENT ---
 
 interface ChatMessage {
-    id: number;
+    id: number | string;
     text: string;
     sender: 'user' | 'bot';
 }
@@ -389,10 +393,16 @@ const Chatbot = () => {
         { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today?", sender: 'bot' }
     ]);
     const [inputValue, setInputValue] = useState('');
-    const [speakingId, setSpeakingId] = useState<number | null>(null);
+    // FIX: The `ChatMessage` id can be a string or number, so the state needs to allow for both.
+    const [speakingId, setSpeakingId] = useState<number | string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
+    const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
+    const [chatSession, setChatSession] = useState<Chat | null>(null);
+    const [isBotTyping, setIsBotTyping] = useState(false);
+    const chatInitialized = useRef(false);
+
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -400,6 +410,19 @@ const Chatbot = () => {
 
     useEffect(scrollToBottom, [messages]);
     
+    useEffect(() => {
+        if (isOpen && !chatInitialized.current) {
+            const chat = ai.chats.create({
+                model: 'gemini-2.5-flash',
+                config: {
+                    systemInstruction: "You are EcoBot, a friendly and helpful assistant for the GreenMap application. Your goal is to help users understand how to use the app to report environmental events like tree plantations and pollution hotspots. Keep your answers concise and helpful."
+                }
+            });
+            setChatSession(chat);
+            chatInitialized.current = true;
+        }
+    }, [isOpen]);
+
     useEffect(() => {
         return () => {
             speechSynthesis.cancel();
@@ -410,7 +433,18 @@ const Chatbot = () => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             console.warn("Speech recognition not supported in this browser.");
+            setMicPermission('unsupported');
             return;
+        }
+
+        if (navigator.permissions) {
+            // FIX: Bypassing TypeScript error. 'microphone' is a valid but experimental permission name.
+            navigator.permissions.query({ name: 'microphone' as any }).then(permissionStatus => {
+                setMicPermission(permissionStatus.state);
+                permissionStatus.onchange = () => {
+                    setMicPermission(permissionStatus.state);
+                };
+            });
         }
 
         const recognition = new SpeechRecognition();
@@ -418,22 +452,12 @@ const Chatbot = () => {
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
-        recognition.onstart = () => {
-            setIsListening(true);
-        };
-
-        recognition.onend = () => {
-            setIsListening(false);
-        };
-
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
         recognition.onerror = (event: any) => {
             console.error("Speech recognition error:", event.error);
-            if(event.error === 'not-allowed') {
-                alert('Microphone access was denied. Please allow microphone access in your browser settings to use voice input.');
-            }
             setIsListening(false);
         };
-
         recognition.onresult = (event: any) => {
             const transcript = Array.from(event.results)
                 .map((result: any) => result[0])
@@ -450,7 +474,7 @@ const Chatbot = () => {
     }, []);
 
     const handleListenClick = () => {
-        if (!recognitionRef.current) return;
+        if (!recognitionRef.current || micPermission === 'denied' || micPermission === 'unsupported') return;
 
         if (isListening) {
             recognitionRef.current.stop();
@@ -481,33 +505,30 @@ const Chatbot = () => {
         speechSynthesis.speak(utterance);
     };
 
-    const handleSendMessage = (e: React.FormEvent) => {
+    const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (inputValue.trim() === '') return;
+        if (inputValue.trim() === '' || !chatSession || isBotTyping) return;
 
         const userMessage: ChatMessage = { id: Date.now(), text: inputValue, sender: 'user' };
         setMessages(prev => [...prev, userMessage]);
+        const currentInput = inputValue;
         setInputValue('');
+        setIsBotTyping(true);
 
-        setTimeout(() => {
-            const botResponse: ChatMessage = { id: Date.now() + 1, text: getBotResponse(inputValue), sender: 'bot' };
+        try {
+            const response = await chatSession.sendMessage({ message: currentInput });
+            const botResponse: ChatMessage = { id: Date.now() + 1, text: response.text, sender: 'bot' };
             setMessages(prev => [...prev, botResponse]);
-        }, 1000);
+        } catch (error) {
+            console.error("Chatbot error:", error);
+            const errorResponse: ChatMessage = { id: Date.now() + 1, text: "Sorry, I'm having trouble connecting. Please try again later.", sender: 'bot' };
+            setMessages(prev => [...prev, errorResponse]);
+        } finally {
+            setIsBotTyping(false);
+        }
     };
 
-    const getBotResponse = (userInput: string): string => {
-        const lowerInput = userInput.toLowerCase();
-        if (lowerInput.includes('tree') || lowerInput.includes('plantation')) {
-            return "To report a tree plantation, simply go to the dashboard and click on the map where the trees were planted. A form will appear for you to fill out the details!";
-        }
-        if (lowerInput.includes('pollution') || lowerInput.includes('hotspot')) {
-            return "Reporting a pollution hotspot is easy. Click on the location on the main map, fill in the description, select 'Pollution Hotspot', and submit.";
-        }
-        if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
-            return "Hi there! What can I help you with?";
-        }
-        return "I'm not sure how to answer that. You can ask me about reporting tree plantations or pollution hotspots.";
-    };
+    const isMicDisabled = micPermission === 'denied' || micPermission === 'unsupported';
 
     return (
         <>
@@ -560,18 +581,31 @@ const Chatbot = () => {
                                     type="text"
                                     value={inputValue}
                                     onChange={e => setInputValue(e.target.value)}
-                                    placeholder={isListening ? "Listening..." : "Ask something..."}
+                                    placeholder={isListening ? "Listening..." : isBotTyping ? "EcoBot is typing..." : "Ask something..."}
                                     className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    disabled={isBotTyping || !chatSession}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={handleListenClick}
-                                    disabled={!recognitionRef.current}
-                                    className="absolute inset-y-0 right-0 flex items-center pr-3"
-                                    aria-label={isListening ? 'Stop listening' : 'Use microphone'}
-                                >
-                                    <MicrophoneIcon isListening={isListening} />
-                                </button>
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={handleListenClick}
+                                        disabled={isMicDisabled}
+                                        className="group relative rounded-full p-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        aria-label={isListening ? 'Stop listening' : isMicDisabled ? 'Microphone unavailable' : 'Use microphone'}
+                                    >
+                                        <MicrophoneIcon isListening={isListening} disabled={isMicDisabled} />
+                                        {micPermission === 'denied' && (
+                                            <div className="absolute bottom-full right-1/2 translate-x-1/2 mb-2 w-56 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 text-center z-10 shadow-lg">
+                                                Microphone access denied. Please enable it in your browser's site settings.
+                                            </div>
+                                        )}
+                                        {micPermission === 'unsupported' && (
+                                            <div className="absolute bottom-full right-1/2 translate-x-1/2 mb-2 w-56 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 text-center z-10 shadow-lg">
+                                                Voice input is not supported by your browser.
+                                            </div>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </motion.div>
@@ -683,6 +717,7 @@ const DashboardPage: React.FC<{
     const [viewingReport, setViewingReport] = useState<Report | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResult, setSearchResult] = useState<{ lat: number; lng: number } | null>(null);
+    const [searchError, setSearchError] = useState<string | null>(null);
 
     const treeCount = useMemo(() => reports.filter(r => r.type === ReportType.TreePlantation).length, [reports]);
     const pollutionCount = useMemo(() => reports.filter(r => r.type === ReportType.PollutionHotspot).length, [reports]);
@@ -734,17 +769,25 @@ const DashboardPage: React.FC<{
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchQuery.trim()) return;
+        setSearchError(null);
+        setSearchResult(null);
+
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`, {
+                headers: { 'User-Agent': 'GreenMap Application v1.0' }
+            });
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.statusText}`);
+            }
             const data = await response.json();
             if (data && data.length > 0) {
                 setSearchResult({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
             } else {
-                alert("Location not found.");
+                setSearchError("Location not found. Please try another search.");
             }
         } catch (error) {
             console.error("Search error:", error);
-            alert("Failed to search for location.");
+            setSearchError("Failed to search. Please check your connection.");
         }
     };
 
@@ -766,22 +809,41 @@ const DashboardPage: React.FC<{
                     )}
                 </motion.div>
             </div>
-             <motion.form 
-                onSubmit={handleSearch}
-                initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-                className="absolute top-4 right-4 z-10 flex items-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg"
-            >
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search for a location..."
-                    className="bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-2 px-4 focus:outline-none w-48 sm:w-64"
-                />
-                <button type="submit" className="text-white bg-emerald-500 hover:bg-emerald-600 p-2.5 rounded-r-lg transition-colors" aria-label="Search">
-                    <SearchIcon />
-                </button>
-            </motion.form>
+             <div className="absolute top-4 right-4 z-10 w-64 sm:w-80">
+                <motion.form 
+                    onSubmit={handleSearch}
+                    initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+                    className="flex items-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-md rounded-lg shadow-lg"
+                >
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setSearchError(null);
+                            setSearchResult(null);
+                        }}
+                        placeholder="Search for a location..."
+                        className="bg-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-2 px-4 focus:outline-none w-full"
+                    />
+                    <button type="submit" className="text-white bg-emerald-500 hover:bg-emerald-600 p-2.5 rounded-r-lg transition-colors shrink-0" aria-label="Search">
+                        <SearchIcon />
+                    </button>
+                </motion.form>
+                <AnimatePresence>
+                    {searchError && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-2 text-sm text-red-700 dark:text-red-400 bg-red-100/80 dark:bg-red-900/80 backdrop-blur-sm p-2 rounded-md shadow-lg text-center"
+                        >
+                            {searchError}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
             <MapComponent 
                 reports={reports} 
                 onMapClick={handleMapClick} 
@@ -1049,73 +1111,78 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount };
     }, [reports]);
     
-    const handleGenerateAnalysis = () => {
+    const handleGenerateAnalysis = async () => {
         setIsAnalyzing(true);
         setAiAnalysis(null);
         setAnalysisError(null);
 
-        setTimeout(() => {
-            if (reports.length === 0) {
-                setAnalysisError("Not enough data to generate an analysis. Please add some reports first.");
+        try {
+            if (reports.length < 3) {
+                setAnalysisError("Not enough data for a meaningful analysis. Please add at least 3 reports.");
                 setIsAnalyzing(false);
                 return;
             }
 
-            const { totalReports, treeCount, pollutionCount } = analysisData;
-            const treeRatio = totalReports > 0 ? treeCount / totalReports : 0;
+            const reportsSummary = `Total reports: ${analysisData.totalReports}, Tree plantations: ${analysisData.treeCount}, Pollution hotspots: ${analysisData.pollutionCount}.`;
+            const recentReports = reports
+                .slice(0, 5)
+                .map(r => `- ${r.type} at ${r.locationName}: ${r.description}`)
+                .join('\n');
+            
+            const prompt = `
+                You are an environmental data analyst for a community mapping application called GreenMap.
+                Analyze the following environmental report data for a local community.
 
-            let mockResult: AIAnalysisResult;
+                Data Summary:
+                ${reportsSummary}
 
-            if (treeRatio >= 0.6) {
-                mockResult = {
-                    summary: `The analysis of ${totalReports} reports shows a strong positive trend. The community is actively engaged in reforestation, with tree planting activities significantly outnumbering pollution reports. This indicates a healthy and proactive approach to environmental conservation.`,
-                    observations: [
-                        "A majority of reports are for tree plantations, highlighting successful community engagement.",
-                        "Pollution hotspots, while fewer, are still present and require attention.",
-                        "Recent activity shows a consistent effort in greening urban areas."
-                    ],
-                    recommendations: [
-                        "Organize targeted cleanup events for the identified pollution hotspots.",
-                        "Share success stories on the community gallery to inspire more participation.",
-                        "Consider partnering with local schools for educational planting events."
-                    ],
-                    score: Math.round(Math.min(10, 7 + treeRatio * 3))
-                };
-            } else if (treeRatio >= 0.4) {
-                 mockResult = {
-                    summary: `The data from ${totalReports} reports indicates a balanced mix of activities. While there are commendable tree planting efforts, the number of pollution reports suggests that there are key areas needing environmental cleanup and attention. The community is active on both fronts.`,
-                    observations: [
-                        "There is a near-even split between positive (planting) and negative (pollution) reports.",
-                        "Urban centers show a high concentration of both types of reports.",
-                        "Community engagement appears steady, but could be boosted with targeted campaigns."
-                    ],
-                    recommendations: [
-                        "Launch a 'Green and Clean' campaign to simultaneously address both planting and cleanup.",
-                        "Focus on recycling education to reduce waste at pollution hotspots.",
-                        "Identify and reward the most active community members to encourage others."
-                    ],
-                    score: Math.round(Math.min(10, 4 + treeRatio * 4))
-                };
-            } else {
-                 mockResult = {
-                    summary: `Analysis of the ${totalReports} reports highlights a critical need for action. Pollution hotspots are currently a more frequent type of report than tree planting activities. This presents an opportunity for the community to rally together and focus on cleanup and restoration efforts.`,
-                    observations: [
-                        "Pollution reports currently outweigh tree plantation reports.",
-                        "Industrial areas and waterways are common locations for pollution hotspots.",
-                        "There is an opportunity to increase positive environmental actions."
-                    ],
-                    recommendations: [
-                        "Prioritize and organize large-scale cleanup events for the most-reported pollution areas.",
-                        "Create awareness campaigns about the impact of pollution and ways to reduce waste.",
-                        "Initiate a community challenge to increase the number of tree plantation reports next month."
-                    ],
-                    score: Math.round(Math.max(1, 1 + treeRatio * 4))
-                };
-            }
+                Most Recent Reports:
+                ${recentReports}
+                
+                Based on this data, provide:
+                1. A concise summary (2-3 sentences) of the environmental situation.
+                2. 2-3 key, data-driven observations.
+                3. 2-3 actionable recommendations for the community.
+                4. A positivity score from 1 (very negative) to 10 (very positive), where a higher ratio of tree planting to pollution reports is better. The score should be an integer.
+                
+                The tone should be encouraging, insightful, and community-focused.
+            `;
 
-            setAiAnalysis(mockResult);
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            summary: { type: Type.STRING, description: "A concise summary (2-3 sentences) of the environmental situation." },
+                            observations: {
+                                type: Type.ARRAY,
+                                items: { type: Type.STRING },
+                                description: "2-3 key, data-driven observations."
+                            },
+                            recommendations: {
+                                type: Type.ARRAY,
+                                items: { type: Type.STRING },
+                                description: "2-3 actionable recommendations for the community."
+                            },
+                            score: { type: Type.INTEGER, description: "A positivity score from 1 (very negative) to 10 (very positive)." }
+                        },
+                        required: ["summary", "observations", "recommendations", "score"]
+                    }
+                }
+            });
+
+            const resultJson = JSON.parse(response.text);
+            setAiAnalysis(resultJson);
+
+        } catch (error) {
+            console.error("AI analysis failed:", error);
+            setAnalysisError("Failed to generate AI analysis. The model may be overloaded. Please try again later.");
+        } finally {
             setIsAnalyzing(false);
-        }, 2000); // Simulate a 2-second analysis time
+        }
     };
 
     const StatCard = ({ title, value, icon, delay = 0 }) => (
