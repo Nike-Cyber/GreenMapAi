@@ -72,6 +72,12 @@ const SearchIcon = () => (
     </svg>
 );
 
+const MicrophoneIcon: React.FC<{ isListening: boolean }> = ({ isListening }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors duration-300 ${isListening ? 'text-red-500 animate-pulse' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 10v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+    </svg>
+);
+
 const SpeakerIcon: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
       <path d="M6 8a1 1 0 011-1h1v4H7a1 1 0 01-1-1V8z" />
@@ -385,6 +391,8 @@ const Chatbot = () => {
     const [inputValue, setInputValue] = useState('');
     const [speakingId, setSpeakingId] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [isListening, setIsListening] = useState(false);
+    const recognitionRef = useRef<any>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -392,12 +400,65 @@ const Chatbot = () => {
 
     useEffect(scrollToBottom, [messages]);
     
-    // Cleanup speech synthesis on component unmount or close
     useEffect(() => {
         return () => {
             speechSynthesis.cancel();
         };
     }, []);
+
+    useEffect(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.warn("Speech recognition not supported in this browser.");
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+            setIsListening(true);
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error("Speech recognition error:", event.error);
+            if(event.error === 'not-allowed') {
+                alert('Microphone access was denied. Please allow microphone access in your browser settings to use voice input.');
+            }
+            setIsListening(false);
+        };
+
+        recognition.onresult = (event: any) => {
+            const transcript = Array.from(event.results)
+                .map((result: any) => result[0])
+                .map((result: any) => result.transcript)
+                .join('');
+            setInputValue(transcript);
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            recognitionRef.current?.abort();
+        };
+    }, []);
+
+    const handleListenClick = () => {
+        if (!recognitionRef.current) return;
+
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else {
+            recognitionRef.current.start();
+        }
+    };
+
 
     const handleSpeak = (message: ChatMessage) => {
         if (!('speechSynthesis' in window)) {
@@ -405,7 +466,6 @@ const Chatbot = () => {
             return;
         }
 
-        // If the same message is clicked again, stop speaking
         if (speakingId === message.id) {
             speechSynthesis.cancel();
             setSpeakingId(null);
@@ -417,7 +477,7 @@ const Chatbot = () => {
         utterance.onend = () => setSpeakingId(null);
         utterance.onerror = () => setSpeakingId(null);
         
-        speechSynthesis.cancel(); // Stop any previous speech
+        speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
     };
 
@@ -495,13 +555,24 @@ const Chatbot = () => {
                              <div ref={messagesEndRef} />
                         </div>
                         <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 dark:border-gray-700">
-                            <input
-                                type="text"
-                                value={inputValue}
-                                onChange={e => setInputValue(e.target.value)}
-                                placeholder="Ask something..."
-                                className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                            />
+                             <div className="relative flex items-center">
+                                <input
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={e => setInputValue(e.target.value)}
+                                    placeholder={isListening ? "Listening..." : "Ask something..."}
+                                    className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleListenClick}
+                                    disabled={!recognitionRef.current}
+                                    className="absolute inset-y-0 right-0 flex items-center pr-3"
+                                    aria-label={isListening ? 'Stop listening' : 'Use microphone'}
+                                >
+                                    <MicrophoneIcon isListening={isListening} />
+                                </button>
+                            </div>
                         </form>
                     </motion.div>
                 )}
