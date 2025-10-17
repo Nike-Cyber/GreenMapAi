@@ -3,21 +3,19 @@ import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Chat } from '@google/genai';
 import { Report, ReportType } from './types';
-import { initializeChatSession, generateReportAnalysis, analyzeFeedback, AIAnalysisResult, FeedbackAnalysisResult } from './ai';
 
 
 // --- ICONS (as React Components) ---
 
 const SunIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
     </svg>
 );
 
 const MoonIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
     </svg>
 );
@@ -74,22 +72,15 @@ const SearchIcon = () => (
     </svg>
 );
 
-const MicrophoneIcon: React.FC<{ isListening: boolean; disabled?: boolean }> = ({ isListening, disabled }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors duration-300 ${isListening ? 'text-red-500 animate-pulse' : disabled ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-14 0m7 10v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-    </svg>
-);
-
-const SpeakerIcon: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${isSpeaking ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} viewBox="0 0 20 20" fill="currentColor">
-      <path d="M6 8a1 1 0 011-1h1v4H7a1 1 0 01-1-1V8z" />
-      <path fillRule="evenodd" d="M10 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zM3 8a1 1 0 011-1h1v4H4a1 1 0 01-1-1V8zm13 0a1 1 0 011-1h1v4h-1a1 1 0 01-1-1V8z" clipRule="evenodd" />
-    </svg>
-);
-
 const CommunityIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+);
+
+const BrainIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
     </svg>
 );
 
@@ -388,173 +379,54 @@ interface ChatMessage {
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today? 🌳", sender: 'bot' }
+        { id: 1, text: "Hello! I'm EcoBot. Ask me about GreenMap! 🌳", sender: 'bot' }
     ]);
     const [inputValue, setInputValue] = useState('');
-    const [speakingId, setSpeakingId] = useState<number | string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const [isListening, setIsListening] = useState(false);
-    const recognitionRef = useRef<any>(null);
-    const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
-    const [isBotTyping, setIsBotTyping] = useState(false);
-    const chatSession = useRef<Chat | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
 
     useEffect(scrollToBottom, [messages]);
-    
-    useEffect(() => {
-        return () => {
-            speechSynthesis.cancel();
-        };
-    }, []);
 
-    useEffect(() => {
-        if (!isOpen) return; // Only init when opened
-
-        const initChat = () => {
-            try {
-                chatSession.current = initializeChatSession();
-            } catch (error) {
-                console.error("Chatbot initialization error:", error);
-                setMessages(prev => [...prev, {
-                    id: 'error',
-                    text: "Sorry, I couldn't connect to the AI service. Please check your API key configuration in your deployment settings.",
-                    sender: 'bot'
-                }]);
-            }
-        };
-
-        if (!chatSession.current) {
-            initChat();
-        }
-    }, [isOpen]);
-
-    useEffect(() => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            console.warn("Speech recognition not supported in this browser.");
-            setMicPermission('unsupported');
-            return;
-        }
-
-        if (navigator.permissions) {
-            navigator.permissions.query({ name: 'microphone' as any }).then(permissionStatus => {
-                setMicPermission(permissionStatus.state);
-                permissionStatus.onchange = () => {
-                    setMicPermission(permissionStatus.state);
-                };
-            });
-        }
-
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onstart = () => setIsListening(true);
-        recognition.onend = () => setIsListening(false);
-        recognition.onerror = (event: any) => {
-            console.error("Speech recognition error:", event.error);
-            setIsListening(false);
-        };
-        recognition.onresult = (event: any) => {
-            const transcript = Array.from(event.results)
-                .map((result: any) => result[0])
-                .map((result: any) => result.transcript)
-                .join('');
-            setInputValue(transcript);
-        };
-
-        recognitionRef.current = recognition;
-
-        return () => {
-            recognitionRef.current?.abort();
-        };
-    }, []);
-
-    const handleListenClick = () => {
-        if (!recognitionRef.current || micPermission === 'denied' || micPermission === 'unsupported') return;
-
-        if (isListening) {
-            recognitionRef.current.stop();
-        } else {
-            recognitionRef.current.start();
-        }
-    };
-
-
-    const handleSpeak = (message: ChatMessage) => {
-        if (!('speechSynthesis' in window)) {
-            alert("Sorry, your browser doesn't support text-to-speech.");
-            return;
-        }
-
-        if (speakingId === message.id) {
-            speechSynthesis.cancel();
-            setSpeakingId(null);
-            return;
-        }
-        
-        const utterance = new SpeechSynthesisUtterance(message.text);
-        utterance.onstart = () => setSpeakingId(message.id);
-        utterance.onend = () => setSpeakingId(null);
-        utterance.onerror = () => setSpeakingId(null);
-        
-        speechSynthesis.cancel();
-        speechSynthesis.speak(utterance);
-    };
-
-    const handleSendMessage = async (e: React.FormEvent) => {
+    const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (inputValue.trim() === '' || isBotTyping) return;
+        if (inputValue.trim() === '') return;
 
-        const currentInput = inputValue;
-        const userMessage: ChatMessage = { id: Date.now(), text: currentInput, sender: 'user' };
+        const currentInput = inputValue.trim().toLowerCase();
+        const userMessage: ChatMessage = { id: Date.now(), text: inputValue, sender: 'user' };
         setMessages(prev => [...prev, userMessage]);
         setInputValue('');
-        setIsBotTyping(true);
-
-        if (!chatSession.current) {
-            setMessages(prev => [...prev, {
-                id: 'error-no-session',
-                text: "Chat session is not initialized. Please try closing and reopening the chat.",
-                sender: 'bot'
-            }]);
-            setIsBotTyping(false);
-            return;
-        }
-
-        const botResponse: ChatMessage = { id: Date.now() + 1, text: '', sender: 'bot' };
-        setMessages(prev => [...prev, botResponse]);
         
-        try {
-            const stream = await chatSession.current.sendMessageStream({ message: currentInput });
-            let streamedText = "";
-
-            for await (const chunk of stream) {
-                streamedText += chunk.text;
-                setMessages(prevMessages => {
-                    const newMessages = [...prevMessages];
-                    newMessages[newMessages.length - 1].text = streamedText;
-                    return newMessages;
-                });
+        const responses: { [key: string]: string } = {
+            'help': "You can use GreenMap to report tree plantations or pollution hotspots. Just click on the map to get started!",
+            'tree': "To report a tree plantation, click on the map where the trees were planted and fill out the form. 🌳",
+            'plantation': "To report a tree plantation, click on the map where the trees were planted and fill out the form. 🌳",
+            'pollution': "To report a pollution hotspot, click the location on the map, select 'Pollution Hotspot' in the form, and describe the issue. ⚠️",
+            'hotspot': "To report a pollution hotspot, click the location on the map, select 'Pollution Hotspot' in the form, and describe the issue. ⚠️",
+            'hello': "Hello there! How can I assist you with GreenMap today?",
+            'hi': "Hello there! How can I assist you with GreenMap today?",
+            'greenmap': "GreenMap is a community-driven platform for tracking environmental actions. We map tree plantations and pollution hotspots to create a greener world together.",
+            'analysis': "The Analysis page shows you statistics about all reports, including a breakdown by type and a chart of activity over time. It even has an AI-powered summary!",
+            'community': "The Community Hub is a place to chat with other users and share photos of your environmental efforts in the gallery.",
+            'joke': "Why did the tree go to the dentist? To get a root canal! 😂"
+        };
+    
+        let botResponseText = "I'm not sure how to answer that. Try asking about 'help', 'trees', 'pollution', 'analysis', or ask me for a 'joke'.";
+        const keywords = Object.keys(responses);
+        for (const keyword of keywords) {
+            if (currentInput.includes(keyword)) {
+                botResponseText = responses[keyword];
+                break;
             }
-        } catch (error) {
-            console.error("Error sending message to AI:", error);
-            setMessages(prevMessages => {
-                const newMessages = [...prevMessages];
-                newMessages[newMessages.length - 1].text = "Oops! Something went wrong while getting a response. Please try again.";
-                return newMessages;
-            });
-        } finally {
-            setIsBotTyping(false);
         }
-    };
 
-    const isMicDisabled = micPermission === 'denied' || micPermission === 'unsupported';
+        setTimeout(() => {
+            const botMessage: ChatMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
+            setMessages(prev => [...prev, botMessage]);
+        }, 500);
+    };
 
     return (
         <>
@@ -588,30 +460,12 @@ const Chatbot = () => {
                             {messages.map(msg => (
                                 <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
                                      <div className={`flex items-end gap-2 max-w-[90%]`}>
-                                        {msg.sender === 'bot' && (
-                                            <button onClick={() => handleSpeak(msg)} className="mb-1" aria-label="Read message aloud">
-                                                <SpeakerIcon isSpeaking={speakingId === msg.id} />
-                                            </button>
-                                        )}
                                         <div className={`p-2 rounded-lg ${msg.sender === 'user' ? 'bg-emerald-500 dark:bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white'}`}>
                                             {msg.text}
                                         </div>
                                     </div>
                                 </div>
                             ))}
-                             {isBotTyping && messages[messages.length - 1]?.sender === 'user' && (
-                                <div className="flex justify-start mb-3">
-                                    <div className="flex items-end gap-2 max-w-[90%]">
-                                        <div className="p-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white">
-                                            <div className="flex items-center justify-center space-x-1">
-                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                             )}
                              <div ref={messagesEndRef} />
                         </div>
                         <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 dark:border-gray-700">
@@ -620,31 +474,9 @@ const Chatbot = () => {
                                     type="text"
                                     value={inputValue}
                                     onChange={e => setInputValue(e.target.value)}
-                                    placeholder={isListening ? "Listening..." : isBotTyping ? "EcoBot is typing..." : "Ask something..."}
-                                    className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 pr-10 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                    disabled={isBotTyping}
+                                    placeholder="Ask something..."
+                                    className="w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg py-2 px-3 pr-4 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                 />
-                                <div className="absolute inset-y-0 right-0 flex items-center pr-1.5">
-                                    <button
-                                        type="button"
-                                        onClick={handleListenClick}
-                                        disabled={isMicDisabled}
-                                        className="group relative rounded-full p-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                        aria-label={isListening ? 'Stop listening' : isMicDisabled ? 'Microphone unavailable' : 'Use microphone'}
-                                    >
-                                        <MicrophoneIcon isListening={isListening} disabled={isMicDisabled} />
-                                        {micPermission === 'denied' && (
-                                            <div className="absolute bottom-full right-1/2 translate-x-1/2 mb-2 w-56 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 text-center z-10 shadow-lg">
-                                                Microphone access denied. Please enable it in your browser's site settings.
-                                            </div>
-                                        )}
-                                        {micPermission === 'unsupported' && (
-                                            <div className="absolute bottom-full right-1/2 translate-x-1/2 mb-2 w-56 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 text-center z-10 shadow-lg">
-                                                Voice input is not supported by your browser.
-                                            </div>
-                                        )}
-                                    </button>
-                                </div>
                             </div>
                         </form>
                     </motion.div>
@@ -1071,38 +903,7 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
     );
 };
 
-const Gauge: React.FC<{ score: number }> = ({ score }) => {
-    const percentage = Math.min(Math.max((score / 10) * 100, 0), 100);
-    const rotation = (percentage / 100) * 180 - 90;
-    const color = score > 7 ? '#34D399' : score > 4 ? '#FBBF24' : '#F87171';
-    
-    return (
-        <div className="w-48 h-24 relative">
-            <svg viewBox="0 0 100 50" className="w-full h-full">
-                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" className="stroke-gray-300 dark:stroke-gray-700" strokeWidth="10" strokeLinecap="round" />
-                <motion.path
-                    d="M 10 50 A 40 40 0 0 1 90 50"
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    initial={{ strokeDasharray: "0, 251.2" }}
-                    animate={{ strokeDasharray: `${(percentage / 100) * 125.6}, 251.2` }}
-                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                />
-            </svg>
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-center">
-                 <span className="text-3xl font-bold" style={{ color }}>{score}</span>
-                 <p className="text-xs text-gray-500 dark:text-gray-400">Positivity Score</p>
-            </div>
-        </div>
-    );
-};
-
 const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
-    const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
-    const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-    const [analysisError, setAnalysisError] = useState<string | null>(null);
 
     const analysisData = useMemo(() => {
         const totalReports = reports.length;
@@ -1123,46 +924,68 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         const treePercentage = (treeCount / totalReports) * 100;
         const pollutionPercentage = 100 - treePercentage;
 
-        const reportsByMonth = reports.reduce<Record<string, number>>((acc, report) => {
+        const reportsByMonth = reports.reduce<Record<string, {value: number, label: string, date: Date}>>((acc, report) => {
             const date = new Date(report.timestamp);
             const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            acc[monthKey] = (acc[monthKey] || 0) + 1;
+            if (!acc[monthKey]) {
+                acc[monthKey] = {
+                    value: 0,
+                    label: date.toLocaleString('default', { month: 'short', year: '2-digit' }),
+                    date: new Date(monthKey + '-01')
+                };
+            }
+            acc[monthKey].value++;
             return acc;
         }, {});
 
-        const monthlyData = Object.entries(reportsByMonth)
-            .map(([dateKey, value]) => ({
-                date: new Date(dateKey + '-01'), // Use first day of month for sorting
-                label: new Date(dateKey + '-01').toLocaleString('default', { month: 'short', year: '2-digit' }),
-                value,
-            }))
-            .sort((a, b) => a.date.getTime() - b.date.getTime());
-        
+        const monthlyData = Object.values(reportsByMonth).sort((a, b) => a.date.getTime() - b.date.getTime());
         const maxMonthlyCount = Math.max(...monthlyData.map(d => d.value), 0);
 
         return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount };
     }, [reports]);
-    
-    const handleGenerateAnalysis = async () => {
-        setIsAnalyzing(true);
-        setAiAnalysis(null);
-        setAnalysisError(null);
 
-        if (reports.length < 3) {
-            setAnalysisError("Not enough data for a meaningful analysis. Please add at least 3 reports.");
-            setIsAnalyzing(false);
-            return;
-        }
+    const [aiInsight, setAiInsight] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
-        try {
-            const resultJson = await generateReportAnalysis(analysisData);
-            setAiAnalysis(resultJson);
-        } catch (error) {
-            console.error("AI analysis generation failed:", error);
-            setAnalysisError("Failed to generate analysis. There might be an issue with the AI service or your API key.");
-        } finally {
-            setIsAnalyzing(false);
-        }
+    const handleGenerateAnalysis = () => {
+        setIsGenerating(true);
+        setAiInsight(null); // Clear previous insight while generating new one
+
+        setTimeout(() => {
+            if (analysisData.totalReports === 0) {
+                setAiInsight("No data available to analyze. Start by adding some reports to the map to generate insights!");
+                setIsGenerating(false);
+                return;
+            }
+
+            let insight = '';
+            
+            if (analysisData.treePercentage > analysisData.pollutionPercentage) {
+                insight += `It's great to see that ${analysisData.treePercentage.toFixed(0)}% of reports are for tree plantations! This indicates a strong community focus on proactive environmental improvement. `;
+            } else {
+                insight += `With ${analysisData.pollutionPercentage.toFixed(0)}% of reports being pollution hotspots, there's a clear opportunity for cleanup initiatives. Mobilizing community efforts in these areas could make a big difference. `;
+            }
+
+            if (analysisData.monthlyData.length > 1) {
+                const lastMonth = analysisData.monthlyData[analysisData.monthlyData.length - 1];
+                const secondLastMonth = analysisData.monthlyData[analysisData.monthlyData.length - 2];
+                if (lastMonth.value > secondLastMonth.value) {
+                    insight += `There's been a positive trend in activity, with an increase in reports in ${lastMonth.label} compared to the previous month. Keep the momentum going! `;
+                } else if (lastMonth.value < secondLastMonth.value) {
+                     insight += `Reporting activity has slightly decreased in ${lastMonth.label}. Let's encourage the community to stay engaged and keep mapping. `;
+                }
+            } else if (analysisData.monthlyData.length === 1) {
+                insight += `The campaign kicked off strongly in ${analysisData.monthlyData[0].label}. `;
+            }
+            
+            const peakMonth = analysisData.monthlyData.reduce((prev, current) => (prev.value > current.value) ? prev : current, {value: 0, label: '', date: new Date(0)});
+            if (peakMonth.label) {
+                insight += `The peak of activity was in ${peakMonth.label}, with ${peakMonth.value} reports. This could be a model for future events.`;
+            }
+
+            setAiInsight(insight);
+            setIsGenerating(false);
+        }, 1500);
     };
 
     const StatCard = ({ title, value, icon, delay = 0 }: { title: string, value: string | number, icon: string, delay?: number }) => (
@@ -1178,18 +1001,6 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 <p className="text-2xl font-bold">{value}</p>
             </div>
         </motion.div>
-    );
-    
-    const AnalysisListItem: React.FC<{children: React.ReactNode, delay: number}> = ({ children, delay }) => (
-        <motion.li 
-            className="flex items-start"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 + delay * 0.15 }}
-        >
-            <span className="text-emerald-500 dark:text-emerald-400 mr-3 mt-1">✓</span>
-            <span>{children}</span>
-        </motion.li>
     );
 
     return (
@@ -1258,78 +1069,50 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                     </div>
                 </motion.div>
             </div>
-            
-            <motion.div
-                className="mt-8 bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-            >
-                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ AI-Powered Insights</h2>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                    Get an automated analysis of the current environmental reports. This AI will identify trends and suggest potential actions.
-                </p>
-                <button
-                    onClick={handleGenerateAnalysis}
-                    disabled={isAnalyzing}
-                    className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-md transition duration-300 flex items-center"
+            <div className="mt-8">
+                <h2 className="text-2xl font-bold mb-4 text-emerald-600 dark:text-emerald-400 flex items-center">
+                    <BrainIcon />
+                    AI-Powered Analysis
+                </h2>
+                <motion.div 
+                    className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg min-h-[10rem]"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.6 }}
                 >
-                    {isAnalyzing ? (
-                        <>
-                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    {isGenerating ? (
+                        <div className="flex items-center justify-center h-full space-x-3 text-gray-600 dark:text-gray-400">
+                            <svg className="animate-spin h-5 w-5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            Analyzing...
-                        </>
+                            <p>Generating insights from the data...</p>
+                        </div>
+                    ) : aiInsight === null ? (
+                        <div className="text-center">
+                            <p className="mb-4 text-gray-600 dark:text-gray-400">Click the button to generate an AI-powered summary of the current data.</p>
+                            <button
+                                onClick={handleGenerateAnalysis}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-md transition duration-300 flex items-center mx-auto"
+                            >
+                                <BrainIcon /> <span className="ml-2">Generate Insights</span>
+                            </button>
+                        </div>
                     ) : (
-                        'Generate Analysis'
+                        <div className="w-full">
+                            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{aiInsight}</p>
+                             <div className="text-right mt-4">
+                                <button
+                                    onClick={handleGenerateAnalysis}
+                                    className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 text-sm"
+                                >
+                                    Regenerate Analysis
+                                </button>
+                            </div>
+                        </div>
                     )}
-                </button>
-
-                {analysisError && (
-                    <div className="mt-4 p-4 bg-red-100/50 dark:bg-red-900/50 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg">
-                        <p>{analysisError}</p>
-                    </div>
-                )}
-
-                {aiAnalysis && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        transition={{ delay: 0.2 }}
-                        className="mt-4 p-4 bg-gray-200/30 dark:bg-gray-900/30 border border-gray-300 dark:border-gray-600 rounded-lg"
-                    >
-                        <div className="grid md:grid-cols-3 gap-6">
-                            <div className="md:col-span-2">
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">Summary</motion.h4>
-                                <motion.p 
-                                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-                                    className="text-gray-700 dark:text-gray-300 font-sans leading-relaxed">{aiAnalysis.summary}</motion.p>
-                            </div>
-                            <motion.div 
-                                initial={{ opacity: 0, scale:0.8 }} animate={{ opacity: 1, scale:1 }} transition={{ delay: 0.5 }}
-                                className="flex justify-center items-center">
-                                <Gauge score={aiAnalysis.score} />
-                            </motion.div>
-                        </div>
-                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-6 mt-6 border-t border-gray-300 dark:border-gray-700 pt-6">
-                            <div>
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">🔎 Key Observations</motion.h4>
-                                <ul className="space-y-2">
-                                    {aiAnalysis.observations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
-                                </ul>
-                            </div>
-                            <div>
-                                <motion.h4 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="font-bold text-lg mb-2 text-emerald-500 dark:text-emerald-300">💡 Recommendations</motion.h4>
-                                <ul className="space-y-2">
-                                    {aiAnalysis.recommendations.map((item, i) => <AnalysisListItem key={i} delay={i}>{item}</AnalysisListItem>)}
-                                </ul>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-            </motion.div>
+                </motion.div>
+            </div>
         </PageContainer>
     );
 };
@@ -1829,9 +1612,8 @@ const FeedbackPage: React.FC = () => {
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitSuccess, setSubmitSuccess] = useState(false);
-    const [analysisResult, setAnalysisResult] = useState<FeedbackAnalysisResult | null>(null);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!message.trim()) {
             alert("Please enter your feedback message.");
@@ -1839,16 +1621,6 @@ const FeedbackPage: React.FC = () => {
         }
         setIsSubmitting(true);
         setSubmitSuccess(false);
-        setAnalysisResult(null);
-
-        // AI Analysis Call
-        try {
-            const resultJson = await analyzeFeedback(feedbackType, message);
-            setAnalysisResult(resultJson);
-        } catch (error) {
-            console.error("Feedback analysis failed:", error);
-            // Non-blocking error. The feedback can still be submitted.
-        }
 
         // Simulate submission process
         setTimeout(() => {
@@ -1858,7 +1630,6 @@ const FeedbackPage: React.FC = () => {
             setFeedbackType('general');
             setTimeout(() => {
                 setSubmitSuccess(false);
-                setAnalysisResult(null);
             }, 6000); // Hide success message after 6 seconds
         }, 500);
     };
@@ -1882,16 +1653,6 @@ const FeedbackPage: React.FC = () => {
                         >
                             <strong className="font-bold">Thank you! </strong>
                             <span className="block sm:inline">Your feedback has been submitted successfully.</span>
-                             {analysisResult && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                                    animate={{ opacity: 1, height: 'auto', marginTop: '0.5rem' }}
-                                    transition={{ delay: 0.2 }}
-                                    className="text-sm"
-                                >
-                                    AI analysis: Category '{analysisResult.category}', Sentiment '{analysisResult.sentiment}'.
-                                </motion.div>
-                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
