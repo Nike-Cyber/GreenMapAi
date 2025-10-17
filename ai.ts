@@ -1,17 +1,20 @@
 import { GoogleGenAI, Chat, Type, GenerateContentResponse } from '@google/genai';
 
 // --- API CONFIGURATION ---
-// As requested, the API key is hardcoded here for simplicity.
-// In a production environment, it is strongly recommended to use environment variables.
-const API_KEY = "AIzaSyDbtfQcsPNucoeTcXibPH6BRh2eUagrch4";
+// The API key is now securely read from the environment variables.
+// You will need to set this in your Vercel project settings during deployment.
+const API_KEY = process.env.API_KEY;
 
-let ai: GoogleGenAI;
+let ai: GoogleGenAI | null = null;
 
-try {
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-} catch (error) {
-    console.error("Failed to initialize GoogleGenAI. Please check your API key.", error);
-    // You could implement a fallback or display an error to the user here.
+if (API_KEY) {
+    try {
+        ai = new GoogleGenAI({ apiKey: API_KEY });
+    } catch (error) {
+        console.error("Failed to initialize GoogleGenAI. Please check your API key.", error);
+    }
+} else {
+    console.error("API_KEY environment variable not found. The AI features will be disabled.");
 }
 
 
@@ -51,7 +54,7 @@ export interface AIAnalysisResult {
  */
 export async function generateReportAnalysis(analysisData: any): Promise<AIAnalysisResult> {
     if (!ai) {
-        throw new Error("AI instance is not initialized.");
+        throw new Error("AI instance is not initialized. Please check your API key environment variable.");
     }
 
     const prompt = `
@@ -115,7 +118,7 @@ export interface FeedbackAnalysisResult {
  */
 export async function analyzeFeedback(feedbackType: string, message: string): Promise<FeedbackAnalysisResult> {
     if (!ai) {
-        throw new Error("AI instance is not initialized.");
+        throw new Error("AI instance is not initialized. Please check your API key environment variable.");
     }
 
     const prompt = `
