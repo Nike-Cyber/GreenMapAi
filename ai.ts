@@ -1,9 +1,9 @@
 import { GoogleGenAI, Chat, Type, GenerateContentResponse } from '@google/genai';
 
 // --- API CONFIGURATION ---
-// The API key is now securely read from the environment variables.
-// You will need to set this in your Vercel project settings during deployment.
-const API_KEY = process.env.API_KEY;
+// As requested, the API key is hardcoded here for simplicity.
+// In a production environment, it is strongly recommended to use environment variables.
+const API_KEY = "AIzaSyDbtfQcsPNucoeTcXibPH6BRh2eUagrch4";
 
 let ai: GoogleGenAI | null = null;
 
