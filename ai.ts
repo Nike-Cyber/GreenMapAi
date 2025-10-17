@@ -6,7 +6,20 @@ import { GoogleGenAI, Chat, Type, GenerateContentResponse } from '@google/genai'
 // Site settings > Build & deploy > Environment > Environment variables.
 // Key: API_KEY
 // Value: your_google_gemini_api_key
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
+/**
+ * Lazily initializes and returns the GoogleGenAI client.
+ * Throws an error if the API key is not configured in the environment.
+ * This prevents the entire application from crashing on load if the key is missing.
+ * @returns An instance of the GoogleGenAI client.
+ */
+function getAiClient(): GoogleGenAI {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error('API_KEY environment variable not set. Please configure it in your deployment settings.');
+    }
+    return new GoogleGenAI({ apiKey });
+}
 
 
 // --- CHATBOT FUNCTIONALITY ---
@@ -16,6 +29,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
  * @returns A Chat session object.
  */
 export function initializeChatSession(): Chat {
+    const ai = getAiClient();
     return ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
@@ -40,6 +54,7 @@ export interface AIAnalysisResult {
  * @returns A promise that resolves to the AIAnalysisResult object.
  */
 export async function generateReportAnalysis(analysisData: any): Promise<AIAnalysisResult> {
+    const ai = getAiClient();
     const prompt = `
         Analyze the following environmental report data from the GreenMap application and provide insights.
         The data includes ${analysisData.totalReports} total reports, with ${analysisData.treeCount} tree plantations and ${analysisData.pollutionCount} pollution hotspots.
@@ -100,6 +115,7 @@ export interface FeedbackAnalysisResult {
  * @returns A promise that resolves to the FeedbackAnalysisResult object.
  */
 export async function analyzeFeedback(feedbackType: string, message: string): Promise<FeedbackAnalysisResult> {
+    const ai = getAiClient();
     const prompt = `
         Analyze the following user feedback for the GreenMap application.
         Classify the feedback into one of these categories: "Bug Report", "Feature Request", "General Comment", or "Praise".
