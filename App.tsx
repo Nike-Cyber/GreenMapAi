@@ -108,6 +108,12 @@ const HelpCenterIcon = () => (
     </svg>
 );
 
+const ScrollArrowIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+    </svg>
+);
+
 
 // --- MOCK DATA & HELPERS ---
 
@@ -540,8 +546,61 @@ const Chatbot = () => {
     )
 };
 
-
 // --- PAGES ---
+
+const ScrollToTopButton: React.FC<{ scrollableRef: React.RefObject<HTMLElement> }> = ({ scrollableRef }) => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    const handleScroll = useCallback(() => {
+        if (scrollableRef.current) {
+            if (scrollableRef.current.scrollTop > 300) {
+                setIsVisible(true);
+            } else {
+                setIsVisible(false);
+            }
+        }
+    }, [scrollableRef]);
+
+    useEffect(() => {
+        const scrollableElement = scrollableRef.current;
+        if (scrollableElement) {
+            scrollableElement.addEventListener('scroll', handleScroll, { passive: true });
+        }
+        return () => {
+            if (scrollableElement) {
+                scrollableElement.removeEventListener('scroll', handleScroll);
+            }
+        };
+    }, [scrollableRef, handleScroll]);
+
+    const scrollToTop = () => {
+        if (scrollableRef.current) {
+            scrollableRef.current.scrollTo({
+                top: 0,
+                behavior: 'smooth',
+            });
+        }
+    };
+
+    return (
+        <AnimatePresence>
+            {isVisible && (
+                <motion.button
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={scrollToTop}
+                    className="fixed bottom-6 right-24 z-40 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full p-3 shadow-lg"
+                    aria-label="Scroll to top"
+                >
+                    <ScrollArrowIcon />
+                </motion.button>
+            )}
+        </AnimatePresence>
+    );
+};
 
 const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => (
     <div className="h-screen w-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
@@ -2331,6 +2390,7 @@ const App: React.FC = () => {
     });
 
     const location = useLocation();
+    const mainRef = useRef<HTMLElement>(null);
 
     useEffect(() => {
         if (theme === 'dark') {
@@ -2427,7 +2487,7 @@ const App: React.FC = () => {
             </AnimatePresence>
             <div className={`flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden transition-filter duration-500 ${showWelcomeScreen ? 'filter blur-sm' : ''}`}>
                 <Sidebar onLogout={handleLogout} toggleTheme={toggleTheme} currentTheme={theme} />
-                <main className={`flex-1 ${isDashboard ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                <main ref={mainRef} className={`flex-1 ${isDashboard ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <AnimatePresence mode="wait">
                         <Routes location={location} key={location.pathname}>
                             <Route path="/dashboard" element={<DashboardPage reports={reports} addReport={addReport} updateReport={updateReport} theme={theme} />} />
@@ -2446,6 +2506,7 @@ const App: React.FC = () => {
                     </AnimatePresence>
                 </main>
                 <Chatbot />
+                <ScrollToTopButton scrollableRef={mainRef} />
             </div>
         </>
     );
