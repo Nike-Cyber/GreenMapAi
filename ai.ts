@@ -1,34 +1,21 @@
 import { GoogleGenAI, Chat, Type, GenerateContentResponse } from '@google/genai';
 
 // --- API CONFIGURATION ---
-// As requested, the API key is hardcoded here for simplicity.
-// In a production environment, it is strongly recommended to use environment variables.
-const API_KEY = "AIzaSyDbtfQcsPNucoeTcXibPH6BRh2eUagrch4";
-
-let ai: GoogleGenAI | null = null;
-
-if (API_KEY) {
-    try {
-        ai = new GoogleGenAI({ apiKey: API_KEY });
-    } catch (error) {
-        console.error("Failed to initialize GoogleGenAI. Please check your API key.", error);
-    }
-} else {
-    console.error("API_KEY environment variable not found. The AI features will be disabled.");
-}
+// The API key is sourced from the environment variable `process.env.API_KEY`.
+// To deploy on Netlify, you must set this variable in your site's settings:
+// Site settings > Build & deploy > Environment > Environment variables.
+// Key: API_KEY
+// Value: your_google_gemini_api_key
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 
 // --- CHATBOT FUNCTIONALITY ---
 
 /**
  * Initializes and returns a new AI chat session for the EcoBot.
- * @returns A Chat session object or null if initialization fails.
+ * @returns A Chat session object.
  */
-export function initializeChatSession(): Chat | null {
-    if (!ai) {
-        console.error("AI instance not available for chat session.");
-        return null;
-    }
+export function initializeChatSession(): Chat {
     return ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
@@ -53,10 +40,6 @@ export interface AIAnalysisResult {
  * @returns A promise that resolves to the AIAnalysisResult object.
  */
 export async function generateReportAnalysis(analysisData: any): Promise<AIAnalysisResult> {
-    if (!ai) {
-        throw new Error("AI instance is not initialized. Please check your API key environment variable.");
-    }
-
     const prompt = `
         Analyze the following environmental report data from the GreenMap application and provide insights.
         The data includes ${analysisData.totalReports} total reports, with ${analysisData.treeCount} tree plantations and ${analysisData.pollutionCount} pollution hotspots.
@@ -117,10 +100,6 @@ export interface FeedbackAnalysisResult {
  * @returns A promise that resolves to the FeedbackAnalysisResult object.
  */
 export async function analyzeFeedback(feedbackType: string, message: string): Promise<FeedbackAnalysisResult> {
-    if (!ai) {
-        throw new Error("AI instance is not initialized. Please check your API key environment variable.");
-    }
-
     const prompt = `
         Analyze the following user feedback for the GreenMap application.
         Classify the feedback into one of these categories: "Bug Report", "Feature Request", "General Comment", or "Praise".

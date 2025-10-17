@@ -417,14 +417,11 @@ const Chatbot = () => {
         const initChat = () => {
             try {
                 chatSession.current = initializeChatSession();
-                if (!chatSession.current) {
-                    throw new Error("Failed to initialize AI Chat session.");
-                }
             } catch (error) {
                 console.error("Chatbot initialization error:", error);
                 setMessages(prev => [...prev, {
                     id: 'error',
-                    text: "Sorry, I couldn't connect to the AI service. Please check your API key configuration.",
+                    text: "Sorry, I couldn't connect to the AI service. Please check your API key configuration in your deployment settings.",
                     sender: 'bot'
                 }]);
             }
