@@ -9,13 +9,13 @@ import { Report, ReportType } from './types';
 // --- ICONS (as React Components) ---
 
 const SunIcon = () => (
-    <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
     </svg>
 );
 
 const MoonIcon = () => (
-    <svg xmlns="http://www.w.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
     </svg>
 );
@@ -399,8 +399,15 @@ const Chatbot = () => {
         setMessages(prev => [...prev, userMessage]);
         setInputValue('');
         
+        const helpText = `I can help you with GreenMap! Try asking me things like:
+• "What is GreenMap?"
+• "How do I report a tree?"
+• "Tell me about the analysis page."
+• "What is the community hub for?"
+• "Tell me a joke!"`;
+
         const responses: { [key: string]: string } = {
-            'help': "You can use GreenMap to report tree plantations or pollution hotspots. Just click on the map to get started!",
+            'help': helpText,
             'tree': "To report a tree plantation, click on the map where the trees were planted and fill out the form. 🌳",
             'plantation': "To report a tree plantation, click on the map where the trees were planted and fill out the form. 🌳",
             'pollution': "To report a pollution hotspot, click the location on the map, select 'Pollution Hotspot' in the form, and describe the issue. ⚠️",
@@ -460,7 +467,7 @@ const Chatbot = () => {
                             {messages.map(msg => (
                                 <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} mb-3`}>
                                      <div className={`flex items-end gap-2 max-w-[90%]`}>
-                                        <div className={`p-2 rounded-lg ${msg.sender === 'user' ? 'bg-emerald-500 dark:bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white'}`}>
+                                        <div className={`p-2 rounded-lg whitespace-pre-wrap ${msg.sender === 'user' ? 'bg-emerald-500 dark:bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white'}`}>
                                             {msg.text}
                                         </div>
                                     </div>
@@ -1380,6 +1387,7 @@ const CommunityPage: React.FC = () => {
                             <form onSubmit={handleUpload}>
                                 <div className="mb-4">
                                     <label className="block text-gray-600 dark:text-gray-400 text-sm font-bold mb-2">Photo</label>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Select an image from your device to share with the community.</p>
                                      <label htmlFor="photo-upload" className="cursor-pointer bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-bold py-2 px-4 rounded-md transition duration-300 inline-block">
                                         {uploadFile ? 'Change Photo' : 'Select Photo'}
                                     </label>
