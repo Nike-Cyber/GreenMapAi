@@ -206,7 +206,7 @@ const Sidebar: React.FC<{ onLogout: () => void; toggleTheme: () => void; current
                     <span className="text-4xl mr-2">🌍</span>GreenMap
                 </Link>
             </div>
-            <nav className="flex-1 p-4 space-y-2">
+            <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
                 <NavLink to="/dashboard" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><DashboardIcon />Dashboard</NavLink>
                 <NavLink to="/reports" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><ReportIcon />Reports</NavLink>
                 <NavLink to="/analysis" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}><AnalysisIcon />Analysis</NavLink>
@@ -2478,8 +2478,6 @@ const App: React.FC = () => {
         return <LoginPage onLogin={handleLogin} />;
     }
 
-    const isDashboard = location.pathname === '/dashboard' || location.pathname === '/';
-
     return (
         <>
             <AnimatePresence>
@@ -2487,7 +2485,7 @@ const App: React.FC = () => {
             </AnimatePresence>
             <div className={`flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden transition-filter duration-500 ${showWelcomeScreen ? 'filter blur-sm' : ''}`}>
                 <Sidebar onLogout={handleLogout} toggleTheme={toggleTheme} currentTheme={theme} />
-                <main ref={mainRef} className={`flex-1 ${isDashboard ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                <main ref={mainRef} className="flex-1 overflow-y-auto">
                     <AnimatePresence mode="wait">
                         <Routes location={location} key={location.pathname}>
                             <Route path="/dashboard" element={<DashboardPage reports={reports} addReport={addReport} updateReport={updateReport} theme={theme} />} />
