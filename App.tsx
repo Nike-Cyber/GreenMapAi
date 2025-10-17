@@ -1,10 +1,12 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
+import type { Chat } from '@google/genai';
 import { Report, ReportType } from './types';
+import { initializeChatSession, generateReportAnalysis, analyzeFeedback, AIAnalysisResult, FeedbackAnalysisResult } from './ai';
+
 
 // --- ICONS (as React Components) ---
 
@@ -386,7 +388,7 @@ interface ChatMessage {
 const Chatbot = () => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today?", sender: 'bot' }
+        { id: 1, text: "Hello! I'm EcoBot. How can I help you with GreenMap today? 🌳", sender: 'bot' }
     ]);
     const [inputValue, setInputValue] = useState('');
     const [speakingId, setSpeakingId] = useState<number | string | null>(null);
@@ -395,6 +397,7 @@ const Chatbot = () => {
     const recognitionRef = useRef<any>(null);
     const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
     const [isBotTyping, setIsBotTyping] = useState(false);
+    const chatSession = useRef<Chat | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -407,6 +410,30 @@ const Chatbot = () => {
             speechSynthesis.cancel();
         };
     }, []);
+
+    useEffect(() => {
+        if (!isOpen) return; // Only init when opened
+
+        const initChat = () => {
+            try {
+                chatSession.current = initializeChatSession();
+                if (!chatSession.current) {
+                    throw new Error("Failed to initialize AI Chat session.");
+                }
+            } catch (error) {
+                console.error("Chatbot initialization error:", error);
+                setMessages(prev => [...prev, {
+                    id: 'error',
+                    text: "Sorry, I couldn't connect to the AI service. Please check your API key configuration.",
+                    sender: 'bot'
+                }]);
+            }
+        };
+
+        if (!chatSession.current) {
+            initChat();
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -482,47 +509,52 @@ const Chatbot = () => {
         speechSynthesis.cancel();
         speechSynthesis.speak(utterance);
     };
-    
-    const getMockBotResponse = (userInput: string): string => {
-        const lowerInput = userInput.toLowerCase();
-        if (lowerInput.includes('hello') || lowerInput.includes('hi')) {
-            return "Hello there! How can I help you with GreenMap today?";
-        }
-        if (lowerInput.includes('report') || lowerInput.includes('add')) {
-            return "You can add a new report by clicking anywhere on the map on the Dashboard page. A form will pop up for you to enter the details.";
-        }
-        if (lowerInput.includes('tree')) {
-            return "To report a tree plantation, click on the map, fill in the form, and select 'Tree Plantation' as the report type.";
-        }
-        if (lowerInput.includes('pollution')) {
-            return "To report a pollution hotspot, click on the map, fill in the form, and select 'Pollution Hotspot' as the report type.";
-        }
-        if (lowerInput.includes('help')) {
-            return "I can help you with questions about reporting events, viewing data analysis, or navigating the app. What would you like to know?";
-        }
-        if (lowerInput.includes('bye') || lowerInput.includes('thanks')) {
-            return "You're welcome! Happy to help. Have a great day!";
-        }
-        return "I'm not sure how to answer that. Could you try rephrasing? You can ask me about how to add reports or view analysis.";
-    };
 
-    const handleSendMessage = (e: React.FormEvent) => {
+    const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (inputValue.trim() === '' || isBotTyping) return;
 
-        const userMessage: ChatMessage = { id: Date.now(), text: inputValue, sender: 'user' };
-        setMessages(prev => [...prev, userMessage]);
         const currentInput = inputValue;
+        const userMessage: ChatMessage = { id: Date.now(), text: currentInput, sender: 'user' };
+        setMessages(prev => [...prev, userMessage]);
         setInputValue('');
         setIsBotTyping(true);
 
-        // Simulate API call and bot thinking
-        setTimeout(() => {
-            const botText = getMockBotResponse(currentInput);
-            const botResponse: ChatMessage = { id: Date.now() + 1, text: botText, sender: 'bot' };
-            setMessages(prev => [...prev, botResponse]);
+        if (!chatSession.current) {
+            setMessages(prev => [...prev, {
+                id: 'error-no-session',
+                text: "Chat session is not initialized. Please try closing and reopening the chat.",
+                sender: 'bot'
+            }]);
             setIsBotTyping(false);
-        }, 1000 + Math.random() * 500);
+            return;
+        }
+
+        const botResponse: ChatMessage = { id: Date.now() + 1, text: '', sender: 'bot' };
+        setMessages(prev => [...prev, botResponse]);
+        
+        try {
+            const stream = await chatSession.current.sendMessageStream({ message: currentInput });
+            let streamedText = "";
+
+            for await (const chunk of stream) {
+                streamedText += chunk.text;
+                setMessages(prevMessages => {
+                    const newMessages = [...prevMessages];
+                    newMessages[newMessages.length - 1].text = streamedText;
+                    return newMessages;
+                });
+            }
+        } catch (error) {
+            console.error("Error sending message to AI:", error);
+            setMessages(prevMessages => {
+                const newMessages = [...prevMessages];
+                newMessages[newMessages.length - 1].text = "Oops! Something went wrong while getting a response. Please try again.";
+                return newMessages;
+            });
+        } finally {
+            setIsBotTyping(false);
+        }
     };
 
     const isMicDisabled = micPermission === 'denied' || micPermission === 'unsupported';
@@ -570,6 +602,19 @@ const Chatbot = () => {
                                     </div>
                                 </div>
                             ))}
+                             {isBotTyping && messages[messages.length - 1]?.sender === 'user' && (
+                                <div className="flex justify-start mb-3">
+                                    <div className="flex items-end gap-2 max-w-[90%]">
+                                        <div className="p-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white">
+                                            <div className="flex items-center justify-center space-x-1">
+                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                             )}
                              <div ref={messagesEndRef} />
                         </div>
                         <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 dark:border-gray-700">
@@ -1029,13 +1074,6 @@ const ReportsPage: React.FC<{reports: Report[]}> = ({ reports }) => {
     );
 };
 
-interface AIAnalysisResult {
-    summary: string;
-    observations: string[];
-    recommendations: string[];
-    score: number;
-}
-
 const Gauge: React.FC<{ score: number }> = ({ score }) => {
     const percentage = Math.min(Math.max((score / 10) * 100, 0), 100);
     const rotation = (percentage / 100) * 180 - 90;
@@ -1119,41 +1157,18 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
             return;
         }
 
-        // Simulate API call with a timeout
-        setTimeout(() => {
-            try {
-                // Generate a semi-dynamic mock analysis based on current data
-                const { treeCount, pollutionCount, totalReports } = analysisData;
-                const isPositiveTrend = treeCount >= pollutionCount;
-
-                const mockResult: AIAnalysisResult = {
-                    summary: `The community has actively reported ${totalReports} environmental events. There's a ${isPositiveTrend ? 'strong focus on positive actions like tree planting' : 'growing concern about pollution hotspots'}. Overall engagement is promising.`,
-                    observations: [
-                        `Tree plantations make up ${Math.round((treeCount / totalReports) * 100)}% of all reports, showing a proactive community spirit.`,
-                        `Pollution reports seem concentrated in specific areas, suggesting targeted cleanup efforts could be highly effective.`,
-                        `Community engagement has been consistent over the past few months, indicating a dedicated user base.`
-                    ],
-                    recommendations: [
-                        `Organize a community event focused on the most reported ${isPositiveTrend ? 'tree planting areas to amplify the effect' : 'pollution hotspots to address the issue'}.`,
-                        "Consider creating a local 'Green Team' to regularly monitor and report on environmental health.",
-                        "Share the success stories of tree planting on the Community Hub to inspire more people to participate."
-                    ],
-                    // Simple score calculation based on the ratio of good vs bad reports
-                    score: Math.max(1, Math.min(10, Math.round(6 + (treeCount - pollutionCount) / totalReports * 4))) 
-                };
-
-                setAiAnalysis(mockResult);
-
-            } catch (error) {
-                console.error("Mock analysis generation failed:", error);
-                setAnalysisError("Failed to generate analysis. An unexpected local error occurred.");
-            } finally {
-                setIsAnalyzing(false);
-            }
-        }, 1500 + Math.random() * 1000); // Simulate network and processing delay
+        try {
+            const resultJson = await generateReportAnalysis(analysisData);
+            setAiAnalysis(resultJson);
+        } catch (error) {
+            console.error("AI analysis generation failed:", error);
+            setAnalysisError("Failed to generate analysis. There might be an issue with the AI service or your API key.");
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
-    const StatCard = ({ title, value, icon, delay = 0 }) => (
+    const StatCard = ({ title, value, icon, delay = 0 }: { title: string, value: string | number, icon: string, delay?: number }) => (
         <motion.div 
             className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg shadow-lg flex items-center space-x-4"
             initial={{ opacity: 0, y: 20 }}
@@ -1253,9 +1268,9 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
             >
-                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ Simulated Insights</h2>
+                <h2 className="text-xl font-bold mb-4 text-emerald-600 dark:text-emerald-400">✨ AI-Powered Insights</h2>
                 <p className="text-gray-700 dark:text-gray-300 mb-4">
-                    Get an automated analysis of the current environmental reports. This simulation will identify trends and suggest potential actions.
+                    Get an automated analysis of the current environmental reports. This AI will identify trends and suggest potential actions.
                 </p>
                 <button
                     onClick={handleGenerateAnalysis}
@@ -1652,7 +1667,7 @@ const ProfilePage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         setIsEditing(false);
     };
 
-    const StatCard = ({ value, label, icon, delay }) => (
+    const StatCard = ({ value, label, icon, delay }: {value: number, label: string, icon: string, delay: number}) => (
         <motion.div 
             className="bg-gray-100/50 dark:bg-gray-700/50 p-4 rounded-lg text-center"
             initial={{ opacity: 0, scale: 0.9 }}
@@ -1817,21 +1832,38 @@ const FeedbackPage: React.FC = () => {
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitSuccess, setSubmitSuccess] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState<FeedbackAnalysisResult | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!message.trim()) {
             alert("Please enter your feedback message.");
             return;
         }
         setIsSubmitting(true);
+        setSubmitSuccess(false);
+        setAnalysisResult(null);
+
+        // AI Analysis Call
+        try {
+            const resultJson = await analyzeFeedback(feedbackType, message);
+            setAnalysisResult(resultJson);
+        } catch (error) {
+            console.error("Feedback analysis failed:", error);
+            // Non-blocking error. The feedback can still be submitted.
+        }
+
+        // Simulate submission process
         setTimeout(() => {
             setIsSubmitting(false);
             setSubmitSuccess(true);
             setMessage('');
             setFeedbackType('general');
-            setTimeout(() => setSubmitSuccess(false), 5000); // Hide success message after 5 seconds
-        }, 1500);
+            setTimeout(() => {
+                setSubmitSuccess(false);
+                setAnalysisResult(null);
+            }, 6000); // Hide success message after 6 seconds
+        }, 500);
     };
 
     const inputClasses = "w-full bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded py-2 px-3 focus:outline-none focus:ring-2 focus:ring-emerald-500";
@@ -1853,6 +1885,16 @@ const FeedbackPage: React.FC = () => {
                         >
                             <strong className="font-bold">Thank you! </strong>
                             <span className="block sm:inline">Your feedback has been submitted successfully.</span>
+                             {analysisResult && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                    animate={{ opacity: 1, height: 'auto', marginTop: '0.5rem' }}
+                                    transition={{ delay: 0.2 }}
+                                    className="text-sm"
+                                >
+                                    AI analysis: Category '{analysisResult.category}', Sentiment '{analysisResult.sentiment}'.
+                                </motion.div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
