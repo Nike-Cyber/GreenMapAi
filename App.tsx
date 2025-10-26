@@ -470,10 +470,11 @@ const Chatbot = () => {
             'greenmap': "GreenMap is a community-driven platform for tracking environmental actions. We map tree plantations and pollution hotspots to create a greener world together.",
             'analysis': "The Analysis page shows you statistics about all reports, including a breakdown by type and a chart of activity over time. It even has an AI-powered summary!",
             'community': "The Community Hub is a place to chat with other users and share photos of your environmental efforts in the gallery.",
-            'joke': "Why did the tree go to the dentist? To get a root canal! 😂"
+            'joke': "Why did the tree go to the dentist? To get a root canal! 😂",
+            'developer': "I was created by a talented team: Nikhil, Devnand, Sajan, Rayan, Saniya, and HEMADG. You can learn more about them on the 'About' page!"
         };
     
-        let botResponseText = "I'm not sure how to answer that. Try asking about 'help', 'trees', 'pollution', 'analysis', or ask me for a 'joke'.";
+        let botResponseText = "I'm not sure how to answer that. Try asking about 'help', 'trees', 'pollution', 'analysis', 'joke', or who my 'developer' is.";
         const keywords = Object.keys(responses);
         for (const keyword of keywords) {
             if (currentInput.includes(keyword)) {
@@ -1029,6 +1030,7 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                 pollutionPercentage: 0,
                 monthlyData: [],
                 maxMonthlyCount: 0,
+                ecoScore: 0,
             };
         }
 
@@ -1036,6 +1038,9 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         const pollutionCount = totalReports - treeCount;
         const treePercentage = (treeCount / totalReports) * 100;
         const pollutionPercentage = 100 - treePercentage;
+
+        // Calculate Eco Score: 70% weight for tree ratio, 30% for volume (capped at 50 reports)
+        const ecoScore = Math.min(100, Math.round((treePercentage * 0.7) + (Math.min(totalReports, 50) / 50 * 30)));
 
         const reportsByMonth = reports.reduce<Record<string, {value: number, label: string, date: Date}>>((acc, report) => {
             const date = new Date(report.timestamp);
@@ -1054,49 +1059,55 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
         const monthlyData = Object.values(reportsByMonth).sort((a, b) => a.date.getTime() - b.date.getTime());
         const maxMonthlyCount = Math.max(...monthlyData.map(d => d.value), 0);
 
-        return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount };
+        return { totalReports, treeCount, pollutionCount, treePercentage, pollutionPercentage, monthlyData, maxMonthlyCount, ecoScore };
     }, [reports]);
 
-    const [aiInsight, setAiInsight] = useState<string | null>(null);
+    const [aiInsight, setAiInsight] = useState<string[] | null>(null);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
     const handleGenerateAnalysis = () => {
         setIsGenerating(true);
-        setAiInsight(null); // Clear previous insight while generating new one
+        setAiInsight(null);
 
         setTimeout(() => {
             if (analysisData.totalReports === 0) {
-                setAiInsight("No data available to analyze. Start by adding some reports to the map to generate insights!");
+                setAiInsight(["No data to analyze. Add reports to see insights!"]);
                 setIsGenerating(false);
                 return;
             }
 
-            let insight = '';
+            const insights = [];
             
-            if (analysisData.treePercentage > analysisData.pollutionPercentage) {
-                insight += `It's great to see that ${analysisData.treePercentage.toFixed(0)}% of reports are for tree plantations! This indicates a strong community focus on proactive environmental improvement. `;
+            insights.push(`The current Eco-Score of ${analysisData.ecoScore}/100 reflects a positive community impact. Keep up the great work!`);
+
+            if (analysisData.treePercentage > 60) {
+                insights.push(`Excellent focus on reforestation! Tree plantations make up a significant ${analysisData.treePercentage.toFixed(0)}% of all reports.`);
+            } else if (analysisData.pollutionPercentage > 60) {
+                insights.push(`High impact on cleanup efforts! Pollution hotspots account for ${analysisData.pollutionPercentage.toFixed(0)}% of reports, highlighting key areas for action.`);
             } else {
-                insight += `With ${analysisData.pollutionPercentage.toFixed(0)}% of reports being pollution hotspots, there's a clear opportunity for cleanup initiatives. Mobilizing community efforts in these areas could make a big difference. `;
+                insights.push(`A balanced approach is being taken, with ${analysisData.treePercentage.toFixed(0)}% plantations and ${analysisData.pollutionPercentage.toFixed(0)}% pollution reports.`);
             }
 
             if (analysisData.monthlyData.length > 1) {
                 const lastMonth = analysisData.monthlyData[analysisData.monthlyData.length - 1];
                 const secondLastMonth = analysisData.monthlyData[analysisData.monthlyData.length - 2];
                 if (lastMonth.value > secondLastMonth.value) {
-                    insight += `There's been a positive trend in activity, with an increase in reports in ${lastMonth.label} compared to the previous month. Keep the momentum going! `;
+                    insights.push(`Momentum is building! Reporting activity in ${lastMonth.label} saw an increase over the previous month.`);
                 } else if (lastMonth.value < secondLastMonth.value) {
-                     insight += `Reporting activity has slightly decreased in ${lastMonth.label}. Let's encourage the community to stay engaged and keep mapping. `;
+                    insights.push(`Activity has slowed down in ${lastMonth.label}. This is a chance to rally the community for a new push!`);
+                } else {
+                    insights.push(`Community engagement has been steady over the last couple of months.`);
                 }
             } else if (analysisData.monthlyData.length === 1) {
-                insight += `The campaign kicked off strongly in ${analysisData.monthlyData[0].label}. `;
+                insights.push(`The initiative has made a strong start in ${analysisData.monthlyData[0].label} with ${analysisData.monthlyData[0].value} reports.`);
             }
             
             const peakMonth = analysisData.monthlyData.reduce((prev, current) => (prev.value > current.value) ? prev : current, {value: 0, label: '', date: new Date(0)});
             if (peakMonth.label) {
-                insight += `The peak of activity was in ${peakMonth.label}, with ${peakMonth.value} reports. This could be a model for future events.`;
+                insights.push(`The most active period was ${peakMonth.label}, with ${peakMonth.value} reports. This could be a model for future events.`);
             }
 
-            setAiInsight(insight);
+            setAiInsight(insights);
             setIsGenerating(false);
         }, 1500);
     };
@@ -1115,6 +1126,55 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
             </div>
         </motion.div>
     );
+
+    const EcoMeter = ({ score }: { score: number }) => {
+        const circumference = 2 * Math.PI * 45; // 2 * pi * radius
+        const offset = circumference - (score / 100) * circumference;
+    
+        const scoreColor = score > 75 ? 'text-emerald-500' : score > 40 ? 'text-yellow-500' : 'text-red-500';
+    
+        return (
+            <div className="relative w-40 h-40 shrink-0">
+                <svg className="w-full h-full" viewBox="0 0 100 100">
+                    <circle
+                        className="text-gray-200 dark:text-gray-600"
+                        strokeWidth="10"
+                        stroke="currentColor"
+                        fill="transparent"
+                        r="45"
+                        cx="50"
+                        cy="50"
+                    />
+                    <motion.circle
+                        className={scoreColor}
+                        strokeWidth="10"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={circumference}
+                        animate={{ strokeDashoffset: offset }}
+                        transition={{ duration: 1.5, delay: 0.5, ease: "easeOut" }}
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        fill="transparent"
+                        r="45"
+                        cx="50"
+                        cy="50"
+                        transform="rotate(-90 50 50)"
+                    />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                     <motion.span 
+                        className={`text-4xl font-bold ${scoreColor}`}
+                        initial={{ opacity: 0}}
+                        animate={{ opacity: 1}}
+                        transition={{ delay: 0.5}}
+                    >
+                         {score}
+                    </motion.span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400 font-semibold">Eco Score</span>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <PageContainer title="Data Analysis">
@@ -1188,7 +1248,7 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                     AI-Powered Analysis
                 </h2>
                 <motion.div 
-                    className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg min-h-[10rem]"
+                    className="bg-gray-100/50 dark:bg-gray-700/50 p-6 rounded-lg min-h-[12rem]"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.6 }}
@@ -1212,9 +1272,33 @@ const AnalysisPage: React.FC<{ reports: Report[] }> = ({ reports }) => {
                             </button>
                         </div>
                     ) : (
-                        <div className="w-full">
-                            <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{aiInsight}</p>
-                             <div className="text-right mt-4">
+                        <div>
+                            <div className="flex flex-col md:flex-row items-center gap-6">
+                               <EcoMeter score={analysisData.ecoScore} />
+                                <motion.ul 
+                                    className="space-y-3 text-gray-700 dark:text-gray-300 flex-1"
+                                    variants={{
+                                        visible: { transition: { staggerChildren: 0.2, delayChildren: 0.2 } },
+                                    }}
+                                    initial="hidden"
+                                    animate="visible"
+                                >
+                                    {aiInsight.map((point, index) => (
+                                        <motion.li
+                                            key={index}
+                                            className="flex items-start"
+                                            variants={{
+                                                hidden: { opacity: 0, x: -20 },
+                                                visible: { opacity: 1, x: 0 },
+                                            }}
+                                        >
+                                            <span className="mr-3 mt-1 text-emerald-500">✨</span>
+                                            <span>{point}</span>
+                                        </motion.li>
+                                    ))}
+                                </motion.ul>
+                            </div>
+                             <div className="text-right mt-6">
                                 <button
                                     onClick={handleGenerateAnalysis}
                                     className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition duration-300 text-sm"
